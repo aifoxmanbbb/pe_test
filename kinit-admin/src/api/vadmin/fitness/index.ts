@@ -35,3 +35,19 @@ export const getFitnessStandardListApi = (
 ): Promise<IResponse<any>> => {
   return request.get({ url: '/vadmin/fitness/standard/list', params })
 }
+
+export const getFitnessBatchOptionsApi = (): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/fitness/batch/options' })
+}
+
+export const createFitnessBatchApi = (data: Record<string, any>): Promise<IResponse<any>> => {
+  return request.post({ url: '/vadmin/fitness/batch', data })
+}
+
+export const upsertFitnessScoresApi = (data: Record<string, any>): Promise<IResponse<any>> => {
+  return request.post({ url: '/vadmin/fitness/score/upsert', data })
+}
+
+export const createFitnessStandardApi = (data: Record<string, any>): Promise<IResponse<any>> => {
+  return request.post({ url: '/vadmin/fitness/standard', data })
+}
