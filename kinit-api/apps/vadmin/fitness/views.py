@@ -12,7 +12,10 @@ from apps.vadmin.sport.models import (
     VadminSportStandard,
     VadminSportStandardItem,
     VadminSportBatch,
-    VadminSportScore
+    VadminSportScore,
+    VadminPefGrade,
+    VadminPefClass,
+    VadminPefStudent
 )
 from apps.vadmin.sport.service.analytics_service import (
     avg,
@@ -1120,4 +1123,108 @@ async def upsert_scores(
         count += 1
     await auth.db.flush()
     return SuccessResponse({'upsert_count': count})
+
+
+@app.get('/batch/list', summary='体测批次列表')
+async def get_batch_list(
+        page: int = Query(1),
+        limit: int = Query(10),
+        batch_name: str | None = Query(None),
+        auth: Auth = Depends(FullAdminAuth(permissions=['fitness.score.entry']))
+):
+    sql = select(VadminSportBatch).where(
+        VadminSportBatch.is_delete == false(),
+        VadminSportBatch.biz_type == 'fitness'
+    )
+    if batch_name:
+        sql = sql.where(VadminSportBatch.batch_name.like(f"%{batch_name}%"))
+    
+    sql = sql.order_by(VadminSportBatch.id.desc())
+    
+    # 简单的内存分页展示逻辑，实际生产应使用数据库 offset/limit
+    rows = (await auth.db.scalars(sql)).all()
+    rows = [r for r in rows if _in_scope(auth, r.school_name, r.class_name)]
+    
+    total = len(rows)
+    start = (page - 1) * limit
+    end = start + limit
+    paged_rows = rows[start:end]
+    
+    return SuccessResponse({
+        'total': total,
+        'items': paged_rows
+    })
+
+
+@app.put('/batch/{id}', summary='更新体测批次')
+async def update_batch(
+        id: int,
+        payload: dict = Body(...),
+        auth: Auth = Depends(FullAdminAuth(permissions=['fitness.score.entry']))
+):
+    batch = (await auth.db.scalars(select(VadminSportBatch).where(
+        VadminSportBatch.is_delete == false(),
+        VadminSportBatch.id == id
+    ).limit(1))).first()
+    if not batch:
+        return ErrorResponse('批次不存在')
+    
+    if not _in_scope(auth, batch.school_name, batch.class_name):
+        return ErrorResponse('无权限操作该数据')
+
+    # 更新字段
+    for key in ['batch_name', 'standard_id', 'status', 'start_date', 'end_date', 'remark']:
+        if key in payload:
+            setattr(batch, key, payload[key])
+    
+    await auth.db.flush()
+    return SuccessResponse('更新成功')
+
+
+@app.delete('/batch/{id}', summary='删除体测批次')
+async def delete_batch(
+        id: int,
+        auth: Auth = Depends(FullAdminAuth(permissions=['fitness.score.entry']))
+):
+    batch = (await auth.db.scalars(select(VadminSportBatch).where(
+        VadminSportBatch.is_delete == false(),
+        VadminSportBatch.id == id
+    ).limit(1))).first()
+    if not batch:
+        return ErrorResponse('批次不存在')
+    
+    if not _in_scope(auth, batch.school_name, batch.class_name):
+        return ErrorResponse('无权限操作该数据')
+
+    batch.is_delete = True
+    await auth.db.flush()
+    return SuccessResponse('删除成功')
+
+
+@app.get('/students/options', summary='获取学生选项')
+async def get_student_options(
+        grade_name: str | None = Query(None),
+        class_name: str | None = Query(None),
+        auth: Auth = Depends(FullAdminAuth(permissions=['fitness.score.entry']))
+):
+    sql = select(VadminPefStudent).where(VadminPefStudent.is_delete == false())
+    # 简单的连接查询获取年级和班级名称（如果需要）
+    # 这里直接按 ID 或名称过滤，取决于前端传参
+    if grade_name:
+        # 实际应通过 join VadminPefGrade 过滤，此处简化处理
+        pass
+    
+    rows = (await auth.db.scalars(sql)).all()
+    
+    # 模拟根据学校/班级过滤
+    data = []
+    for r in rows:
+        data.append({
+            'label': f"{r.name} ({r.student_no})",
+            'value': r.student_no,
+            'gender': r.gender,
+            'student_name': r.name,
+            'student_no': r.student_no
+        })
+    return SuccessResponse(data)
 

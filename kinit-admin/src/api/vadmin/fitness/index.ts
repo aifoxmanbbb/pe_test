@@ -51,3 +51,24 @@ export const upsertFitnessScoresApi = (data: Record<string, any>): Promise<IResp
 export const createFitnessStandardApi = (data: Record<string, any>): Promise<IResponse<any>> => {
   return request.post({ url: '/vadmin/fitness/standard', data })
 }
+
+export const getFitnessBatchListApi = (params: Record<string, any>): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/fitness/batch/list', params })
+}
+
+export const updateFitnessBatchApi = (
+  id: number,
+  data: Record<string, any>
+): Promise<IResponse<any>> => {
+  return request.put({ url: `/vadmin/fitness/batch/${id}`, data })
+}
+
+export const deleteFitnessBatchApi = (id: number): Promise<IResponse<any>> => {
+  return request.delete({ url: `/vadmin/fitness/batch/${id}` })
+}
+
+export const getFitnessStudentOptionsApi = (
+  params?: Record<string, any>
+): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/fitness/students/options', params })
+}

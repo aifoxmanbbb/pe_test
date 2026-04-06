@@ -96,3 +96,43 @@ class VadminSportScore(BaseModel):
     teacher_comment: Mapped[str | None] = mapped_column(String(255), comment="老师评语")
     test_date: Mapped[Date | None] = mapped_column(Date, comment="测试日期")
 
+
+class VadminPefGrade(BaseModel):
+    __tablename__ = "vadmin_pef_grade"
+    __table_args__ = ({'comment': '体考体测-年级'})
+
+    grade_name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, comment="年级名称")
+    grade_code: Mapped[str | None] = mapped_column(String(50), comment="年级编码")
+    sort: Mapped[int] = mapped_column(Integer, default=0, comment="排序")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否启用")
+    remark: Mapped[str | None] = mapped_column(String(255), comment="备注")
+
+
+class VadminPefClass(BaseModel):
+    __tablename__ = "vadmin_pef_class"
+    __table_args__ = ({'comment': '体考体测-班级'})
+
+    grade_id: Mapped[int] = mapped_column(Integer, ForeignKey("vadmin_pef_grade.id"), nullable=False, comment="年级ID")
+    class_name: Mapped[str] = mapped_column(String(50), nullable=False, comment="班级名称")
+    class_code: Mapped[str | None] = mapped_column(String(50), unique=True, comment="班级编码")
+    coach_user_id: Mapped[int | None] = mapped_column(Integer, comment="主教练用户ID")
+    sort: Mapped[int] = mapped_column(Integer, default=0, comment="排序")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否启用")
+    remark: Mapped[str | None] = mapped_column(String(255), comment="备注")
+
+
+class VadminPefStudent(BaseModel):
+    __tablename__ = "vadmin_pef_student"
+    __table_args__ = ({'comment': '体考体测-学生花名册'})
+
+    student_no: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, comment="学号")
+    name: Mapped[str] = mapped_column(String(50), nullable=False, comment="姓名")
+    gender: Mapped[str] = mapped_column(String(8), nullable=False, comment="性别")
+    birthday: Mapped[Date | None] = mapped_column(Date, comment="出生日期")
+    grade_id: Mapped[int] = mapped_column(Integer, ForeignKey("vadmin_pef_grade.id"), nullable=False, comment="年级ID")
+    class_id: Mapped[int] = mapped_column(Integer, ForeignKey("vadmin_pef_class.id"), nullable=False, comment="班级ID")
+    user_id: Mapped[int | None] = mapped_column(Integer, comment="关联用户ID")
+    phone: Mapped[str | None] = mapped_column(String(20), comment="联系电话")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否启用")
+    remark: Mapped[str | None] = mapped_column(String(255), comment="备注")
+

@@ -43,3 +43,19 @@ export const upsertPeScoresApi = (data: Record<string, any>): Promise<IResponse<
 export const createPeStandardApi = (data: Record<string, any>): Promise<IResponse<any>> => {
   return request.post({ url: '/vadmin/pe/standard', data })
 }
+
+export const getPeBatchListApi = (params: Record<string, any>): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/pe/batch/list', params })
+}
+
+export const updatePeBatchApi = (id: number, data: Record<string, any>): Promise<IResponse<any>> => {
+  return request.put({ url: `/vadmin/pe/batch/${id}`, data })
+}
+
+export const deletePeBatchApi = (id: number): Promise<IResponse<any>> => {
+  return request.delete({ url: `/vadmin/pe/batch/${id}` })
+}
+
+export const getPeStudentOptionsApi = (params?: Record<string, any>): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/pe/students/options', params })
+}

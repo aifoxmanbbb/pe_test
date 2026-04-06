@@ -211,6 +211,14 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
         meta: {
           title: '评分标准'
         }
+      },
+      {
+        path: 'batch',
+        component: () => import('@/views/Vadmin/PE/Batch/Batch.vue'),
+        name: 'PEBatch',
+        meta: {
+          title: '批次管理'
+        }
       }
     ]
   },
@@ -288,6 +296,14 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
         name: 'FitnessStandard',
         meta: {
           title: '体测标准中心'
+        }
+      },
+      {
+        path: 'batch',
+        component: () => import('@/views/Vadmin/Fitness/Batch/Batch.vue'),
+        name: 'FitnessBatch',
+        meta: {
+          title: '批次管理'
         }
       }
     ]
