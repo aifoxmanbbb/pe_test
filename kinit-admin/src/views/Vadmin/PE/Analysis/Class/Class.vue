@@ -19,6 +19,7 @@ const batchOptions = ref<any[]>([])
 const schoolOptions = ref<any[]>([])
 const gradeOptions = ref<any[]>([])
 const classOptions = ref<any[]>([])
+const currentSchoolName = ref<string>('')
 
 const kpi = ref<any>(null)
 const rankList = ref<any[]>([])
@@ -34,8 +35,10 @@ const searchSchema = computed<FormSchema[]>(() => [
       filterable: true,
       clearable: true,
       onChange: async (val: string) => {
+        currentSchoolName.value = val || ''
         gradeOptions.value = []
         classOptions.value = []
+        await searchRef.value?.setValues({ grade_name: null, class_name: null })
         if (!val) return
         const res = await getGradeOptionsApi({ school_name: val }).catch(() => null)
         gradeOptions.value = (res?.data || []).map((i: any) => ({ label: i.label, value: i.grade_name || i.value }))
@@ -51,8 +54,13 @@ const searchSchema = computed<FormSchema[]>(() => [
       clearable: true,
       onChange: async (val: string) => {
         classOptions.value = []
-        if (!val) return
-        const res = await getClassOptionsApi({ grade_name: val }).catch(() => null)
+        await searchRef.value?.setValues({ class_name: null })
+        const schoolName = currentSchoolName.value || searchRef.value?.formModel?.school_name
+        if (!val || !schoolName) return
+        const res = await getClassOptionsApi({
+          school_name: schoolName,
+          grade_name: val
+        }).catch(() => null)
         classOptions.value = (res?.data || []).map((i: any) => ({ label: i.label, value: i.class_name || i.value }))
       }
     }
@@ -142,10 +150,11 @@ const loadSchoolOptions = async () => {
 }
 
 const buildDefaultParams = async () => {
-  const params: Record<string, any> = { grade_name: null, class_name: null }
+  const params: Record<string, any> = { batch_id: null, school_name: null, grade_name: null, class_name: null }
   if (batchOptions.value.length) params.batch_id = batchOptions.value[0].value
   if (schoolOptions.value.length) {
     params.school_name = schoolOptions.value[0].value
+    currentSchoolName.value = params.school_name
     const gradeRes = await getGradeOptionsApi({ school_name: params.school_name }).catch(() => null)
     gradeOptions.value = (gradeRes?.data || []).map((i: any) => ({ label: i.label, value: i.grade_name || i.value }))
   }
@@ -159,8 +168,12 @@ const syncSearchValues = async (params: Record<string, any>) => {
 
 const onTabChange = async () => {
   lastParams.value = {}
+  currentSchoolName.value = ''
   gradeOptions.value = []
   classOptions.value = []
+  kpi.value = null
+  rankList.value = []
+  await syncSearchValues({ batch_id: null, school_name: null, grade_name: null, class_name: null })
   await Promise.all([loadBatchOptions(), loadSchoolOptions()])
   const params = await buildDefaultParams()
   await syncSearchValues(params)

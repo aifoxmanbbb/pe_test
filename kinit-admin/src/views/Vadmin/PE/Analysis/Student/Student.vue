@@ -32,6 +32,7 @@ const schoolOptions = ref<any[]>([])
 const gradeOptions = ref<any[]>([])
 const classOptions = ref<any[]>([])
 const studentOptions = ref<any[]>([])
+const currentSchoolName = ref<string>('')
 
 const profile = ref<any>(null)
 const stats = ref<any>(null)
@@ -47,11 +48,17 @@ const searchSchema = computed<FormSchema[]>(() => [
       filterable: true,
       clearable: true,
       onChange: async (val: string) => {
+        currentSchoolName.value = val || ''
         gradeOptions.value = []
         classOptions.value = []
-        if (!val) return
+        await searchRef.value?.setValues({ grade_name: null, class_name: null, student_no: null })
+        if (!val) {
+          studentOptions.value = []
+          return
+        }
         const res = await getGradeOptionsApi({ school_name: val }).catch(() => null)
         gradeOptions.value = (res?.data || []).map((i: any) => ({ label: i.label, value: i.grade_name || i.value }))
+        await loadStudentOptions({ school_name: val, grade_name: null, class_name: null, student_no: null })
       }
     }
   },
@@ -64,13 +71,45 @@ const searchSchema = computed<FormSchema[]>(() => [
       clearable: true,
       onChange: async (val: string) => {
         classOptions.value = []
-        if (!val) return
-        const res = await getClassOptionsApi({ grade_name: val }).catch(() => null)
+        await searchRef.value?.setValues({ class_name: null, student_no: null })
+        const schoolName = currentSchoolName.value || searchRef.value?.formModel?.school_name
+        if (!val || !schoolName) {
+          await loadStudentOptions({
+            school_name: schoolName,
+            grade_name: val || null,
+            class_name: null,
+            student_no: null
+          })
+          return
+        }
+        const res = await getClassOptionsApi({
+          school_name: schoolName,
+          grade_name: val
+        }).catch(() => null)
         classOptions.value = (res?.data || []).map((i: any) => ({ label: i.label, value: i.class_name || i.value }))
+        await loadStudentOptions({ school_name: schoolName, grade_name: val, class_name: null, student_no: null })
       }
     }
   },
-  { field: 'class_name', label: '班级', component: 'Select', componentProps: { options: classOptions.value, clearable: true } },
+  {
+    field: 'class_name',
+    label: '班级',
+    component: 'Select',
+    componentProps: {
+      options: classOptions.value,
+      clearable: true,
+      onChange: async (val: string) => {
+        await searchRef.value?.setValues({ student_no: null })
+        const current = searchRef.value?.formModel || {}
+        await loadStudentOptions({
+          school_name: current.school_name,
+          grade_name: current.grade_name,
+          class_name: val || null,
+          student_no: null
+        })
+      }
+    }
+  },
   {
     field: 'student_no',
     label: '学生',
@@ -178,8 +217,14 @@ const loadData = async (params: Record<string, any> = lastParams.value) => {
 
 const onTabChange = async () => {
   lastParams.value = {}
+  currentSchoolName.value = ''
   gradeOptions.value = []
   classOptions.value = []
+  studentOptions.value = []
+  profile.value = null
+  stats.value = null
+  detailList.value = []
+  await syncSearchValues({ school_name: null, grade_name: null, class_name: null, student_no: null })
   await initDefaultQuery()
 }
 
@@ -196,9 +241,10 @@ const initDefaultQuery = async () => {
   const schoolRes = await getSchoolOptionsApi({ stage_type: stageType.value }).catch(() => null)
   schoolOptions.value = (schoolRes?.data || []).map((i: any) => ({ label: i.label, value: i.school_name || i.value }))
 
-  const params: Record<string, any> = { grade_name: null, class_name: null, student_no: null }
+  const params: Record<string, any> = { school_name: null, grade_name: null, class_name: null, student_no: null }
   if (schoolOptions.value.length) {
     params.school_name = schoolOptions.value[0].value
+    currentSchoolName.value = params.school_name
     const gradeRes = await getGradeOptionsApi({ school_name: params.school_name }).catch(() => null)
     gradeOptions.value = (gradeRes?.data || []).map((i: any) => ({ label: i.label, value: i.grade_name || i.value }))
   }

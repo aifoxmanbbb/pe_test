@@ -34,6 +34,7 @@ const searchSchema = computed<FormSchema[]>(() => [
       clearable: true,
       onChange: async (val: string) => {
         gradeOptions.value = []
+        await searchRef.value?.setValues({ grade_name: null })
         if (!val) return
         const res = await getGradeOptionsApi({ school_name: val }).catch(() => null)
         gradeOptions.value = (res?.data || []).map((i: any) => ({ label: i.label, value: i.grade_name || i.value }))
@@ -144,7 +145,7 @@ const loadSchoolOptions = async () => {
 }
 
 const buildDefaultParams = async () => {
-  const params: Record<string, any> = { grade_name: null }
+  const params: Record<string, any> = { batch_id: null, school_name: null, grade_name: null }
   if (batchOptions.value.length) params.batch_id = batchOptions.value[0].value
   if (schoolOptions.value.length) {
     params.school_name = schoolOptions.value[0].value
@@ -162,6 +163,9 @@ const syncSearchValues = async (params: Record<string, any>) => {
 const onTabChange = async () => {
   lastParams.value = {}
   gradeOptions.value = []
+  kpi.value = null
+  classList.value = []
+  await syncSearchValues({ batch_id: null, school_name: null, grade_name: null })
   await Promise.all([loadBatchOptions(), loadSchoolOptions()])
   const params = await buildDefaultParams()
   await syncSearchValues(params)

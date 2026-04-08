@@ -129,7 +129,8 @@ const formSchema = reactive<FormSchema[]>([
     componentProps: { 
       options: gradeOptions.value,
       onChange: async (val: string) => {
-        const res = await getClassOptionsApi({ grade_name: val })
+        const formData = await formMethods.getFormData()
+        const res = await getClassOptionsApi({ school_name: formData?.school_name, grade_name: val })
         replaceOptions(classOptions.value, res.data.map(i => ({ label: i.label, value: i.class_name })))
         formMethods.setValues({ class_name: null })
       }
@@ -171,7 +172,7 @@ const handleEdit = async (row: any) => {
     replaceOptions(gradeOptions.value, resG.data.map(i => ({ label: i.label, value: i.grade_name || i.value })))
   }
   if (row.grade_name) {
-    const resC = await getClassOptionsApi({ grade_name: row.grade_name })
+    const resC = await getClassOptionsApi({ school_name: row.school_name, grade_name: row.grade_name })
     replaceOptions(classOptions.value, resC.data.map(i => ({ label: i.label, value: i.class_name || i.value })))
   }
   nextTick(() => formMethods.setValues(row))

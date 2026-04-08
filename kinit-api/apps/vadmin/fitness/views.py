@@ -5,7 +5,7 @@ import json
 import re
 from typing import Any
 from fastapi import APIRouter, Depends, Body, Query, File, UploadFile
-from sqlalchemy import select, false
+from sqlalchemy import select, false, true, func, or_
 from apps.vadmin.auth.utils.current import AllUserAuth, FullAdminAuth
 from apps.vadmin.auth.utils.validation.auth import Auth
 from apps.vadmin.sport.models import (
@@ -13,6 +13,7 @@ from apps.vadmin.sport.models import (
     VadminSportStandardItem,
     VadminSportBatch,
     VadminSportScore,
+    VadminPefSchool,
     VadminPefGrade,
     VadminPefClass,
     VadminPefStudent
@@ -542,7 +543,9 @@ async def get_student_analysis(
 
     by_student = group_scores_by_student(all_rows)
     selected_student_no = student_no
-    if not selected_student_no or selected_student_no not in by_student:
+    if selected_student_no and selected_student_no not in by_student:
+        return SuccessResponse(_empty_student())
+    if not selected_student_no:
         selected_student_no = sorted(
             by_student.keys(),
             key=lambda no: (len(by_student[no]), max(r.batch_id for r in by_student[no])),
@@ -1328,13 +1331,64 @@ async def delete_batch(
 
 @app.get('/students/options', summary='获取学生选项')
 async def get_student_options(
+        school_id: int | None = Query(None),
+        school_name: str | None = Query(None),
+        grade_id: int | None = Query(None),
         grade_name: str | None = Query(None),
+        class_id: int | None = Query(None),
         class_name: str | None = Query(None),
-        auth: Auth = Depends(FullAdminAuth(permissions=['fitness.score.entry']))
+        stage_type: str | None = Query(None),
+        student_keyword: str | None = Query(None),
+        auth: Auth = Depends(FullAdminAuth(permissions=['fitness.analysis.student']))
 ):
-    sql = select(VadminPefStudent).where(VadminPefStudent.is_delete == false())
+    joined_school = False
+    joined_grade = False
+    joined_class = False
+    sql = select(VadminPefStudent).where(
+        VadminPefStudent.is_delete == false(),
+        VadminPefStudent.is_active == true()
+    )
+    if school_id:
+        sql = sql.where(VadminPefStudent.school_id == school_id)
+    if school_name:
+        sql = sql.join(VadminPefSchool, VadminPefStudent.school_id == VadminPefSchool.id)
+        joined_school = True
+        sql = sql.where(VadminPefSchool.school_name == school_name)
+    if grade_id:
+        sql = sql.where(VadminPefStudent.grade_id == grade_id)
+    if grade_name:
+        if not joined_grade:
+            sql = sql.join(VadminPefGrade, VadminPefStudent.grade_id == VadminPefGrade.id)
+            joined_grade = True
+        sql = sql.where(VadminPefGrade.grade_name == grade_name)
+    if class_id:
+        sql = sql.where(VadminPefStudent.class_id == class_id)
+    if class_name:
+        if not joined_class:
+            sql = sql.join(VadminPefClass, VadminPefStudent.class_id == VadminPefClass.id)
+            joined_class = True
+        sql = sql.where(VadminPefClass.class_name == class_name)
+    if stage_type:
+        if not joined_school:
+            sql = sql.join(VadminPefSchool, VadminPefStudent.school_id == VadminPefSchool.id)
+            joined_school = True
+        sql = sql.where(
+            or_(
+                func.find_in_set(stage_type, VadminPefSchool.stage_types) > 0,
+                VadminPefSchool.stage_types.is_(None),
+                VadminPefSchool.stage_types == ''
+            )
+        )
     rows = (await auth.db.scalars(sql)).all()
-    
+    if student_keyword:
+        kw = str(student_keyword).strip()
+        if kw:
+            rows = [
+                r for r in rows
+                if kw in (r.student_no or '')
+                or kw in (r.name or '')
+                or kw in (r.phone or '')
+            ]
     data = []
     for r in rows:
         data.append({

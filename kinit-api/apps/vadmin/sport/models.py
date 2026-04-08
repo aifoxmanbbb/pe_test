@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Integer, BigInteger, Date, DateTime, DECIMAL, Boolean, ForeignKey, JSON
+from sqlalchemy import String, Integer, BigInteger, Date, DateTime, DECIMAL, Boolean, ForeignKey, JSON, UniqueConstraint
 from db.db_base import BaseModel
 
 class VadminSportStandard(BaseModel):
@@ -95,7 +95,10 @@ class VadminPefSchool(BaseModel):
 
 class VadminPefGrade(BaseModel):
     __tablename__ = "vadmin_pef_grade"
-    __table_args__ = ({'comment': '体考体测-年级'})
+    __table_args__ = (
+        UniqueConstraint('school_id', 'grade_name', 'is_delete', name='uk_pef_grade_school_name'),
+        {'comment': '体考体测-年级'}
+    )
 
     school_id: Mapped[int] = mapped_column(Integer, ForeignKey("vadmin_pef_school.id"), nullable=False, comment="所属学校ID")
     grade_name: Mapped[str] = mapped_column(String(50), nullable=False, comment="年级名称")
@@ -107,7 +110,10 @@ class VadminPefGrade(BaseModel):
 
 class VadminPefClass(BaseModel):
     __tablename__ = "vadmin_pef_class"
-    __table_args__ = ({'comment': '体考体测-班级'})
+    __table_args__ = (
+        UniqueConstraint('school_id', 'grade_id', 'class_name', 'is_delete', name='uk_pef_class_scope_name'),
+        {'comment': '体考体测-班级'}
+    )
 
     school_id: Mapped[int] = mapped_column(Integer, ForeignKey("vadmin_pef_school.id"), nullable=False, comment="所属学校ID")
     grade_id: Mapped[int] = mapped_column(Integer, ForeignKey("vadmin_pef_grade.id"), nullable=False, comment="年级ID")

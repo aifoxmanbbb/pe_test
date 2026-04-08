@@ -75,12 +75,27 @@ async def get_grade_options(school_id: int = Query(None), school_name: str = Que
     return SuccessResponse([{"label": i.grade_name, "value": i.id, "grade_name": i.grade_name} for i in items])
 
 @app.get("/options/classes", summary="班级选项")
-async def get_class_options(grade_id: int = Query(None), grade_name: str = Query(None), auth: Auth = Depends(FullAdminAuth())):
+async def get_class_options(
+    grade_id: int = Query(None),
+    grade_name: str = Query(None),
+    school_id: int = Query(None),
+    school_name: str = Query(None),
+    auth: Auth = Depends(FullAdminAuth())
+):
     sql = select(VadminPefClass).where(VadminPefClass.is_delete == false(), VadminPefClass.is_active == true())
+    joined_school = False
     if grade_id:
         sql = sql.where(VadminPefClass.grade_id == grade_id)
+    if school_id:
+        sql = sql.where(VadminPefClass.school_id == school_id)
     if grade_name:
-        sql = sql.join(VadminPefGrade).where(VadminPefGrade.grade_name == grade_name)
+        sql = sql.join(VadminPefGrade)
+        sql = sql.where(VadminPefGrade.grade_name == grade_name)
+    if school_name:
+        if not joined_school:
+            sql = sql.join(VadminPefSchool)
+            joined_school = True
+        sql = sql.where(VadminPefSchool.school_name == school_name)
     items = (await auth.db.scalars(sql)).all()
     return SuccessResponse([{"label": i.class_name, "value": i.id, "class_name": i.class_name} for i in items])
 
