@@ -51,12 +51,17 @@ jobs:
 
       - name: Build & Push kinit-api image
         uses: docker/build-push-action@v6
+        env:
+          BUILDKIT_PROGRESS: plain
         with:
-          context: .
+          context: ./kinit-api
           file: docker_env/kinit-api/Dockerfile
           push: true
+          pull: true
           provenance: false
           sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
             ${{ env.TCR_REGISTRY }}/${{ steps.meta.outputs.api_image }}:latest
             ${{ env.TCR_REGISTRY }}/${{ steps.meta.outputs.api_image }}:${{ steps.meta.outputs.sha_short }}
