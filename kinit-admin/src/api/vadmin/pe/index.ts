@@ -8,6 +8,10 @@ export const getPeStudentAnalysisApi = (params?: Record<string, any>): Promise<I
   return request.get({ url: '/vadmin/pe/analysis/student', params })
 }
 
+export const getPeStudentAnalysisSelfApi = (): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/pe/analysis/student/self' })
+}
+
 export const getPeClassAnalysisApi = (params?: Record<string, any>): Promise<IResponse<any>> => {
   return request.get({ url: '/vadmin/pe/analysis/class', params })
 }

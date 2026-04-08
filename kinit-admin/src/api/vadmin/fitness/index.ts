@@ -10,6 +10,10 @@ export const getFitnessStudentAnalysisApi = (
   return request.get({ url: '/vadmin/fitness/analysis/student', params })
 }
 
+export const getFitnessStudentAnalysisSelfApi = (): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/fitness/analysis/student/self' })
+}
+
 export const getFitnessClassAnalysisApi = (
   params?: Record<string, any>
 ): Promise<IResponse<any>> => {
