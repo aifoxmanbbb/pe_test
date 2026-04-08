@@ -9,9 +9,9 @@ import os
 
 """
 Mysql 数据库配置项
-数据库链路配置说明：mysql+asyncmy://用户名:密码@地址:端口/数据库名
+数据库链路配置说明：mysql+aiomysql://用户名:密码@地址:端口/数据库名
 """
-MYSQL_DRIVER = os.getenv('MYSQL_DRIVER', 'asyncmy')
+MYSQL_DRIVER = os.getenv('MYSQL_DRIVER', 'aiomysql')
 MYSQL_HOST = os.getenv('MYSQL_HOST', '127.0.0.1')
 MYSQL_PORT = os.getenv('MYSQL_PORT', '3306')
 MYSQL_DB = os.getenv('MYSQL_DB', 'kinit')
