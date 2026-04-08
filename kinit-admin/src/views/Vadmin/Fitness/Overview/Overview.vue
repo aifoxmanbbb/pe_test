@@ -248,8 +248,8 @@ onMounted(async () => {
         </ElRow>
 
         <ElRow :gutter="14" class="mb-14px">
-          <ElCol :span="12"><Echart :options="itemAvgOptions" height="320px" /></ElCol>
-          <ElCol :span="12"><Echart :options="itemRateOptions" height="320px" /></ElCol>
+          <ElCol :xs="24" :sm="24" :md="12" :lg="12" :xl="12"><Echart :options="itemAvgOptions" height="320px" /></ElCol>
+          <ElCol :xs="24" :sm="24" :md="12" :lg="12" :xl="12"><Echart :options="itemRateOptions" height="320px" /></ElCol>
         </ElRow>
 
         <Echart :options="itemTrendOptions" height="300px" class="mb-14px" />

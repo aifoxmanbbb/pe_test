@@ -369,8 +369,8 @@ onMounted(async () => {
         </ElRow>
 
         <ElRow :gutter="14" class="mb-14px">
-          <ElCol :span="10"><Echart :options="totalTrendOptions" height="300px" /></ElCol>
-          <ElCol :span="14"><Echart :options="itemTrendOptions" height="300px" /></ElCol>
+          <ElCol :xs="24" :sm="24" :md="10" :lg="10" :xl="10"><Echart :options="totalTrendOptions" height="300px" /></ElCol>
+          <ElCol :xs="24" :sm="24" :md="14" :lg="14" :xl="14"><Echart :options="itemTrendOptions" height="300px" /></ElCol>
         </ElRow>
 
         <ElTable :data="detailList" stripe>

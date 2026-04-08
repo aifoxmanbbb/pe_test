@@ -211,8 +211,8 @@ onMounted(async () => {
         </ElRow>
 
         <ElRow :gutter="14" class="mb-14px">
-          <ElCol :span="12"><Echart :options="historyAvgOptions" height="320px" /></ElCol>
-          <ElCol :span="12"><Echart :options="historyItemOptions" height="320px" /></ElCol>
+          <ElCol :xs="24" :sm="24" :md="12" :lg="12" :xl="12"><Echart :options="historyAvgOptions" height="320px" /></ElCol>
+          <ElCol :xs="24" :sm="24" :md="12" :lg="12" :xl="12"><Echart :options="historyItemOptions" height="320px" /></ElCol>
         </ElRow>
 
         <ElTable :data="rankList" stripe>
