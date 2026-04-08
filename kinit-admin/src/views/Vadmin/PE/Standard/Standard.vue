@@ -1,18 +1,71 @@
 ﻿<script setup lang="tsx">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref , computed} from 'vue'
 import { ContentWrap } from '@/components/ContentWrap'
 import { Search } from '@/components/Search'
 import { FormSchema } from '@/components/Form'
-import { ElTag, ElDialog, ElDescriptions, ElDescriptionsItem } from 'element-plus'
+import { ElTag, ElDialog, ElDescriptions, ElDescriptionsItem, ElMessage, ElUpload, ElInput } from 'element-plus'
 import { Table, TableColumn } from '@/components/Table'
 import { BaseButton } from '@/components/Button'
-import { getPeStandardListApi } from '@/api/vadmin/pe'
+import {
+  getPeStandardListApi,
+  createPeStandardApi,
+  importPeStandardApi,
+  confirmPeStandardApi
+} from '@/api/vadmin/pe'
 
 defineOptions({
   name: 'PEStandard'
 })
 
-const searchSchema = reactive<FormSchema[]>([
+// ─── 导入逻辑 ─────────────────────────────────────────────
+const importDialogVisible = ref(false)
+const importLoading = ref(false)
+const importedItems = ref<any[]>([])
+const importForm = reactive({
+  name: '',
+  region: '重庆市',
+  year: 2026,
+  version: '',
+  stage_type: 'mid'
+})
+
+const handleExcelImport = async (options: any) => {
+  const formData = new FormData()
+  formData.append('file', options.file)
+  importLoading.value = true
+  try {
+    const res = await importPeStandardApi(formData)
+    if (res && res.data) {
+      importedItems.value = res.data
+      importDialogVisible.value = true
+      ElMessage.success('解析成功，请确认标准详情')
+    }
+  } catch {
+    ElMessage.error('解析失败')
+  } finally {
+    importLoading.value = false
+  }
+}
+
+const handleConfirmImport = async () => {
+  if (!importForm.name || !importForm.version) {
+    ElMessage.warning('请完整填写标准基本信息')
+    return
+  }
+  const payload = {
+    ...importForm,
+    items: importedItems.value
+  }
+  const res = await confirmPeStandardApi(payload).catch(() => null)
+  if (res) {
+    ElMessage.success('导入成功')
+    importDialogVisible.value = false
+    loadList()
+  }
+}
+
+// ─── 列表展示逻辑 ──────────────────────────────────────────
+const searchSchema = computed<FormSchema[]>(() => [
   {
     field: 'region',
     label: '地区',
@@ -110,7 +163,7 @@ const thresholdMap = ref<Record<number, any[]>>({
       gender: '男/女',
       full: '-',
       excellent: '-',
-      pass: '合格判定',
+      pass: '及格判定',
       mode: '门槛判定'
     },
     {
@@ -253,13 +306,57 @@ onMounted(() => {
 
     <div class="mb-10px flex gap-10px">
       <BaseButton type="primary">导入 PDF</BaseButton>
-      <BaseButton type="success">导入 Excel</BaseButton>
+      <ElUpload
+        :show-file-list="false"
+        :http-request="handleExcelImport"
+        accept=".xlsx, .xls"
+      >
+        <BaseButton type="success" :loading="importLoading">导入 Excel</BaseButton>
+      </ElUpload>
       <BaseButton type="warning">手工录入</BaseButton>
     </div>
 
     <ElCard shadow="never" title="标准版本列表">
       <Table :columns="tableColumns" :data="standardList" :pagination="false" />
     </ElCard>
+
+    <ElDialog v-model="importDialogVisible" title="标准导入确认" width="1000px">
+      <div class="mb-20px">
+        <div class="mb-10px font-bold">1. 完善基本信息</div>
+        <div class="grid grid-cols-3 gap-10px">
+          <div class="flex items-center">
+            <span class="w-80px">标准名称：</span>
+            <ElInput v-model="importForm.name" placeholder="请输入标准名称" class="flex-1" />
+          </div>
+          <div class="flex items-center">
+            <span class="w-80px">地区：</span>
+            <ElInput v-model="importForm.region" placeholder="请输入地区" class="flex-1" />
+          </div>
+          <div class="flex items-center">
+            <span class="w-80px">版本号：</span>
+            <ElInput v-model="importForm.version" placeholder="请输入版本号" class="flex-1" />
+          </div>
+        </div>
+      </div>
+      <div class="mb-10px font-bold">2. 预览项目解析结果</div>
+      <Table
+        :columns="[
+          { field: 'item_name', label: '项目名称' },
+          { field: 'gender', label: '性别' },
+          { field: 'calc_mode', label: '模式' },
+          { field: 'full_threshold', label: '满分阈值' },
+          { field: 'excellent_threshold', label: '优秀阈值' },
+          { field: 'pass_threshold', label: '及格阈值' },
+          { field: 'max_score', label: '满分分值' }
+        ]"
+        :data="importedItems"
+        :pagination="false"
+      />
+      <template #footer>
+        <BaseButton type="primary" @click="handleConfirmImport">确认导入</BaseButton>
+        <BaseButton @click="importDialogVisible = false">取消</BaseButton>
+      </template>
+    </ElDialog>
 
     <ElDialog v-model="detailVisible" title="标准详情" width="980px" destroy-on-close>
       <ElDescriptions v-if="currentStandard" :column="3" border class="mb-20px">
@@ -279,3 +376,4 @@ onMounted(() => {
     </ElDialog>
   </ContentWrap>
 </template>
+

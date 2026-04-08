@@ -1,5 +1,5 @@
 <script setup lang="tsx">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref , computed} from 'vue'
 import { ContentWrap } from '@/components/ContentWrap'
 import { Search } from '@/components/Search'
 import type { FormSchema } from '@/components/Form'
@@ -18,7 +18,7 @@ defineOptions({
   name: 'FitnessStandard'
 })
 
-const searchSchema = reactive<FormSchema[]>([
+const searchSchema = computed<FormSchema[]>(() => [
   {
     field: 'region',
     label: '地区',

@@ -15,6 +15,7 @@ from apps.vadmin.help.views import app as vadmin_help_app
 from apps.vadmin.resource.views import app as vadmin_resource_app
 from apps.vadmin.fitness.views import app as vadmin_fitness_app
 from apps.vadmin.pe.views import app as vadmin_pe_app
+from apps.vadmin.sport.views import app as vadmin_sport_app
 
 # 引入应用中的路由
 urlpatterns = [
@@ -28,4 +29,5 @@ urlpatterns = [
     {"ApiRouter": vadmin_resource_app, "prefix": "/vadmin/resource", "tags": ["资源管理"]},
     {"ApiRouter": vadmin_pe_app, "prefix": "/vadmin/pe", "tags": ["体考管理"]},
     {"ApiRouter": vadmin_fitness_app, "prefix": "/vadmin/fitness", "tags": ["体测管理"]},
+    {"ApiRouter": vadmin_sport_app, "prefix": "/vadmin/sport", "tags": ["体育基础管理"]},
 ]

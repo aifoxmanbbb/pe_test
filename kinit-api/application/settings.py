@@ -17,7 +17,7 @@ VERSION = "3.10.1"
 DEBUG = True
 
 """是否开启演示功能：取消所有POST,DELETE,PUT操作权限"""
-DEMO = True
+DEMO = False
 """演示功能白名单"""
 DEMO_WHITE_LIST_PATH = [
     "/auth/login",

@@ -36,8 +36,8 @@ export const getFitnessStandardListApi = (
   return request.get({ url: '/vadmin/fitness/standard/list', params })
 }
 
-export const getFitnessBatchOptionsApi = (): Promise<IResponse<any>> => {
-  return request.get({ url: '/vadmin/fitness/batch/options' })
+export const getFitnessBatchOptionsApi = (params?: Record<string, any>): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/fitness/batch/options', params })
 }
 
 export const createFitnessBatchApi = (data: Record<string, any>): Promise<IResponse<any>> => {
@@ -71,4 +71,43 @@ export const getFitnessStudentOptionsApi = (
   params?: Record<string, any>
 ): Promise<IResponse<any>> => {
   return request.get({ url: '/vadmin/fitness/students/options', params })
+}
+
+export const exportFitnessReportApi = (params: Record<string, any>): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/fitness/report/export', params })
+}
+
+export const importFitnessStandardApi = (data: FormData): Promise<IResponse<any>> => {
+  return request.post({
+    url: '/vadmin/fitness/standard/import',
+    data,
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
+export const confirmFitnessStandardApi = (data: Record<string, any>): Promise<IResponse<any>> => {
+  return request.post({ url: '/vadmin/fitness/standard/confirm', data })
+}
+
+export const importFitnessScoresApi = (data: FormData): Promise<IResponse<any>> => {
+  return request.post({
+    url: '/vadmin/fitness/score/import',
+    data,
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
+export const confirmFitnessScoresApi = (data: Record<string, any>): Promise<IResponse<any>> => {
+  return request.post({ url: '/vadmin/fitness/score/confirm', data })
+}
+
+export const getFitnessBatchItemScoresApi = (params: {
+  batch_id: number
+  item_code: string
+}): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/fitness/score/batch/students', params })
+}
+
+export const downloadFitnessScoreTemplateApi = (): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/fitness/score/template' })
 }

@@ -75,7 +75,7 @@ const toICO = () => {
 
             <div class="flex justify-end items-center space-x-10px">
               <ThemeSwitch />
-              <LocaleDropdown class="lt-xl:text-white dark:text-white" />
+<!--              <LocaleDropdown class="lt-xl:text-white dark:text-white" />-->
             </div>
           </div>
           <Transition appear enter-active-class="animate__animated animate__bounceInRight">
@@ -94,9 +94,9 @@ const toICO = () => {
               />
             </div>
           </Transition>
-          <div class="text-14px text-white font-normal absolute bottom-5 right-10">
-            <ElButton type="info" link @click="toICO">{{ icpNumber }}</ElButton>
-          </div>
+<!--          <div class="text-14px text-white font-normal absolute bottom-5 right-10">-->
+<!--            <ElButton type="info" link @click="toICO">{{ icpNumber }}</ElButton>-->
+<!--          </div>-->
         </div>
       </div>
     </ElScrollbar>

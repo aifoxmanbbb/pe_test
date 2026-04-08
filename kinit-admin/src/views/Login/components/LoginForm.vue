@@ -53,7 +53,7 @@ const schema = reactive<FormSchema[]>([
   {
     field: 'telephone',
     label: t('login.telephone'),
-    value: '15020221010',
+    value: '15802375679',
     component: 'Input',
     colProps: {
       span: 24
@@ -130,71 +130,66 @@ const schema = reactive<FormSchema[]>([
                   {t('login.login')}
                 </BaseButton>
               </div>
-              <div class="w-[100%] mt-15px">
-                <BaseButton class="w-[100%]" onClick={toTelephoneLogin}>
-                  {t('login.smsLogin')}
-                </BaseButton>
-              </div>
             </>
           )
         }
       }
     }
   },
-  {
-    field: 'other',
-    component: 'Divider',
-    label: t('login.otherLogin'),
-    componentProps: {
-      contentPosition: 'center'
-    }
-  },
-  {
-    field: 'otherIcon',
-    colProps: {
-      span: 24
-    },
-    formItemProps: {
-      slots: {
-        default: () => {
-          return (
-            <>
-              <div class="flex justify-between w-[100%]">
-                <Icon
-                  icon="ant-design:github-filled"
-                  size={iconSize}
-                  class="cursor-pointer ant-icon"
-                  color={iconColor}
-                  hoverColor={hoverColor}
-                />
-                <Icon
-                  icon="ant-design:wechat-filled"
-                  size={iconSize}
-                  class="cursor-pointer ant-icon"
-                  color={iconColor}
-                  hoverColor={hoverColor}
-                />
-                <Icon
-                  icon="ant-design:alipay-circle-filled"
-                  size={iconSize}
-                  color={iconColor}
-                  hoverColor={hoverColor}
-                  class="cursor-pointer ant-icon"
-                />
-                <Icon
-                  icon="ant-design:weibo-circle-filled"
-                  size={iconSize}
-                  color={iconColor}
-                  hoverColor={hoverColor}
-                  class="cursor-pointer ant-icon"
-                />
-              </div>
-            </>
-          )
-        }
-      }
-    }
-  }
+  // {
+  //   field: 'other',
+  //   component: 'Divider',
+  //   label: t('login.otherLogin'),
+  //   componentProps: {
+  //     contentPosition: 'center'
+  //   }
+  // },
+  // {
+  //   field: 'otherIcon',
+  //   colProps: {
+  //     span: 24
+  //   },
+  //   formItemProps: {
+  //     slots: {
+  //       default: () => {
+  //         return (
+  //           <>
+  //             <div class="flex justify-between w-[100%]">
+  //               <Icon
+  //                 icon="ant-design:github-filled"
+  //                 size={iconSize}
+  //                 class="cursor-pointer ant-icon"
+  //                 color={iconColor}
+  //                 hoverColor={hoverColor}
+  //               />
+  //               <Icon
+  //                 icon="ant-design:wechat-filled"
+  //                 size={iconSize}
+  //                 class="cursor-pointer ant-icon"
+  //                 color={iconColor}
+  //                 hoverColor={hoverColor}
+  //               />
+  //               <Icon
+  //                 icon="ant-design:alipay-circle-filled"
+  //                 size={iconSize}
+  //                 color={iconColor}
+  //                 hoverColor={hoverColor}
+  //                 class="cursor-pointer ant-icon"
+  //               />
+  //               <Icon
+  //                 icon="ant-design:weibo-circle-filled"
+  //                 size={iconSize}
+  //                 color={iconColor}
+  //                 hoverColor={hoverColor}
+  //                 class="cursor-pointer ant-icon"
+  //               />
+  //             </div>
+  //           </>
+  //         )
+  //       }
+  //     }
+  //   }
+  // }
 ])
 
 const iconSize = 30

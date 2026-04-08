@@ -175,19 +175,19 @@ const formSchema = reactive<FormSchema[]>([
     },
     hidden: true
   },
-  {
-    field: 'web_icp_number',
-    label: '备案号',
-    colProps: {
-      span: 24
-    },
-    component: 'Input',
-    componentProps: {
-      style: {
-        width: '500px'
-      }
-    }
-  },
+  // {
+  //   field: 'web_icp_number',
+  //   label: '备案号',
+  //   colProps: {
+  //     span: 24
+  //   },
+  //   component: 'Input',
+  //   componentProps: {
+  //     style: {
+  //       width: '500px'
+  //     }
+  //   }
+  // },
   {
     field: 'web_copyright',
     label: '版权信息',

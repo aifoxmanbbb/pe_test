@@ -76,15 +76,6 @@ const user = computed(() => authStore.getUser)
           <BaseButton @click="toHome" link>个人主页</BaseButton>
         </ElDropdownItem>
         <ElDropdownItem>
-          <BaseButton @click="toGitee" link>Gitee</BaseButton>
-        </ElDropdownItem>
-        <ElDropdownItem>
-          <BaseButton @click="toGithub" link>Github</BaseButton>
-        </ElDropdownItem>
-        <ElDropdownItem divided>
-          <div @click="lockScreen">{{ t('lock.lockScreen') }}</div>
-        </ElDropdownItem>
-        <ElDropdownItem>
           <div @click="loginOut">{{ t('common.loginOut') }}</div>
         </ElDropdownItem>
       </ElDropdownMenu>

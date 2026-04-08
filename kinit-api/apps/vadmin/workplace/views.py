@@ -26,7 +26,7 @@ async def get_project():
             "name": 'Mysql',
             "icon": 'vscode-icons:file-type-mysql',
             "message": '最流行的关系型数据库管理系统',
-            "personal": 'kinit',
+            "personal": '体育测试',
             "link": "https://www.mysql.com/",
             "time": datetime.datetime.now().strftime("%Y-%m-%d")
         },
@@ -34,7 +34,7 @@ async def get_project():
             "name": 'FastAPI',
             "icon": 'simple-icons:fastapi',
             "message": '一个现代、快速(高性能)的 web 框架',
-            "personal": 'kinit',
+            "personal": '体育测试',
             "link": "https://fastapi.tiangolo.com/zh/",
             "time": datetime.datetime.now().strftime("%Y-%m-%d")
         },
@@ -42,7 +42,7 @@ async def get_project():
             "name": 'Vue',
             "icon": 'logos:vue',
             "message": '渐进式 JavaScript 框架',
-            "personal": 'kinit',
+            "personal": '体育测试',
             "link": "https://cn.vuejs.org/",
             "time": datetime.datetime.now().strftime("%Y-%m-%d")
         },
@@ -50,7 +50,7 @@ async def get_project():
             "name": 'Element-plus',
             "icon": 'logos:element',
             "message": '面向设计师和开发者的组件库',
-            "personal": 'kinit',
+            "personal": '体育测试',
             "link": "https://element-plus.org/zh-CN/",
             "time": datetime.datetime.now().strftime("%Y-%m-%d")
         },
@@ -58,7 +58,7 @@ async def get_project():
             "name": 'Typescript',
             "icon": 'vscode-icons:file-type-typescript-official',
             "message": 'TypeScript是JavaScript类型的超集',
-            "personal": 'kinit',
+            "personal": '体育测试',
             "link": "https://www.typescriptlang.org/",
             "time": datetime.datetime.now().strftime("%Y-%m-%d")
         },
@@ -66,7 +66,7 @@ async def get_project():
             "name": 'Vite',
             "icon": 'vscode-icons:file-type-vite',
             "message": 'Vite 下一代的前端工具链',
-            "personal": 'kinit',
+            "personal": '体育测试',
             "link": "https://cn.vitejs.dev/",
             "time": datetime.datetime.now().strftime("%Y-%m-%d")
         }

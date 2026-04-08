@@ -9,7 +9,7 @@
 
 ## [关于]
 
-<div align="center"><h3 align="center">Kinit 是一套开箱即用的中后台解决方案，可以作为新项目的启动模版！</h3></div>
+<div align="center"><h3 align="center">体育测试 是一套开箱即用的中后台解决方案，可以作为新项目的启动模版！</h3></div>
 <div align="center"><h3 align="center">前后端分离架构，开箱即用，紧随前沿技术！</h3></div>
 
 <div align="center"><h3 align="center">高性能，高效率，高颜值，易扩展</h3></div>
@@ -18,7 +18,7 @@
 
 ## 介绍
 
-Kinit 是一套全部开源的快速开发平台，毫无保留给个人及企业免费使用。
+体育测试 是一套全部开源的快速开发平台，毫无保留给个人及企业免费使用。
 
 - 后端采用现代、快速（高性能） [FastAPI](https://fastapi.tiangolo.com/zh/) 异步框架 + 自动生成交互式API文档 + （强制类型约束）[Pydantic](https://docs.pydantic.dev/1.10/) + （高效率）[SQLAlchemy 2.0](https://docs.sqlalchemy.org/en/20/index.html)；
 - PC端采用 [vue-element-plus-admin](https://gitee.com/kailong110120130/vue-element-plus-admin) 、[Vue3](https://cn.vuejs.org/guide/introduction.html)、[Element Plus](https://element-plus.gitee.io/zh-CN/guide/design.html)、[TypeScript](https://www.tslang.cn/)等主流技术开发；
@@ -82,8 +82,8 @@ PC端演示地址：https://kinit.ktianc.top
 
 管理员账户：
 
-- 账号：15020221010
-- 密码：kinit2022
+- 账号：15802375679
+- 密码：xxx
 
 测试账户：
 
@@ -472,7 +472,7 @@ pnpm run build:pro
 ### 访问项目
 
 - 访问地址：http://localhost:5000 (默认为此地址，如有修改请按照配置文件)
-- 账号：`15020221010` 密码：`kinit2022`
+- 账号：`15802375679` 密码：`xxx`
 - 接口地址：http://localhost:9000/docs (默认为此地址，如有修改请按照配置文件)
 
 ## Docker Compose 生产环境部署
@@ -616,7 +616,7 @@ docker-compose ps -a
 ### 访问项目
 
 - 访问地址：http://localhost (默认为此地址，如有修改请按照配置文件)
-- 账号：`15020221010` 密码：`kinit2022`
+- 账号：`15802375679` 密码：`xxx`
 - 接口地址：http://localhost:9000/docs (默认为此地址，如有修改请按照配置文件)
 
 ## 如何贡献

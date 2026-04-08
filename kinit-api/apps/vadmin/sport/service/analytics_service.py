@@ -14,6 +14,9 @@ from apps.vadmin.auth.models.dept import VadminDept
 from apps.vadmin.sport.models import VadminSportBatch, VadminSportScore, VadminSportStandardItem
 
 
+from utils.excel.write_xlsx import WriteXlsx
+
+
 def to_float(value: Any, default: float = 0.0) -> float:
     if value is None:
         return default
@@ -268,3 +271,63 @@ def format_score(value: float | int | str | None, suffix: str = '') -> str:
 
 def build_rate_text(pass_rate: float, excellent_rate: float, full_rate: float) -> str:
     return f"及格{round2(pass_rate)}% / 优秀{round2(excellent_rate)}% / 满分{round2(full_rate)}%"
+
+
+def export_scores_to_excel(rows: list[VadminSportScore], filename: str) -> str:
+    if not rows:
+        return ""
+
+    # 获取所有项目
+    item_map: dict[str, str] = {}
+    for r in rows:
+        item_map.setdefault(r.item_code, r.item_name)
+    
+    item_codes = sorted(item_map.keys())
+    
+    headers = ["学生姓名", "学号", "性别", "学校", "年级", "班级"]
+    for code in item_codes:
+        name = item_map[code]
+        headers.append(f"{name}(成绩)")
+        headers.append(f"{name}(分值)")
+    headers.append("总分")
+
+    # 按学生分组
+    student_groups = group_scores_by_student(rows)
+    
+    excel_rows = []
+    for student_no, s_rows in student_groups.items():
+        first = s_rows[0]
+        row_data = [
+            first.student_name,
+            first.student_no,
+            first.gender,
+            first.school_name,
+            first.grade_name,
+            first.class_name
+        ]
+        
+        s_item_map = {r.item_code: r for r in s_rows}
+        total_score = 0.0
+        for code in item_codes:
+            ir = s_item_map.get(code)
+            if ir:
+                row_data.append(format_score(ir.raw_score))
+                row_data.append(to_float(ir.score_value))
+                total_score += to_float(ir.score_value)
+            else:
+                row_data.append("-")
+                row_data.append(0.0)
+        
+        row_data.append(round2(total_score))
+        excel_rows.append(row_data)
+
+    writer = WriteXlsx()
+    writer.create_excel(file_path=filename, save_static=True)
+    
+    # 转换为 dict 结构的 headers
+    header_dicts = [{"label": h} for h in headers]
+    writer.generate_template(header_dicts)
+    writer.write_list(excel_rows)
+    writer.close()
+    
+    return writer.get_file_url()

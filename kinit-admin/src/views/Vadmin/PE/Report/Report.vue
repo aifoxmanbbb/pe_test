@@ -1,5 +1,5 @@
 ﻿<script setup lang="tsx">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref , computed} from 'vue'
 import { ContentWrap } from '@/components/ContentWrap'
 import { Search } from '@/components/Search'
 import { FormSchema } from '@/components/Form'
@@ -14,7 +14,7 @@ import {
 } from 'element-plus'
 import { Table, TableColumn } from '@/components/Table'
 import { BaseButton } from '@/components/Button'
-import { getPeReportConfigApi } from '@/api/vadmin/pe'
+import { getPeReportConfigApi, getPeBatchOptionsApi, exportPeReportApi } from '@/api/vadmin/pe'
 
 defineOptions({
   name: 'PEReport'
@@ -22,7 +22,9 @@ defineOptions({
 
 const examTypeTab = ref('mid')
 
-const searchSchema = reactive<FormSchema[]>([
+const batchOptions = ref([])
+
+const searchSchema = computed<FormSchema[]>(() => [
   {
     field: 'report_type',
     label: '报表类型',
@@ -30,9 +32,9 @@ const searchSchema = reactive<FormSchema[]>([
     componentProps: {
       placeholder: '请选择类型',
       options: [
-        { label: '学生报表', value: 'student' },
-        { label: '班级报表', value: 'class' },
-        { label: '年级报表', value: 'grade' }
+        { label: '学生成绩报表', value: 'student' },
+        { label: '班级汇总报表', value: 'class' },
+        { label: '年级分析报表', value: 'grade' }
       ]
     }
   },
@@ -42,43 +44,32 @@ const searchSchema = reactive<FormSchema[]>([
     component: 'Select',
     componentProps: {
       placeholder: '请选择批次',
-      options: [{ label: '2026春季体考', value: 1 }]
+      options: batchOptions.value,
+      filterable: true
     }
   },
   {
-    field: 'school_id',
+    field: 'school_name',
     label: '学校',
-    component: 'Select',
-    componentProps: {
-      placeholder: '请选择学校',
-      options: [
-        { label: '第一中学', value: 1 },
-        { label: '实验中学', value: 2 }
-      ]
-    }
-  },
-  {
-    field: 'grade_id',
-    label: '年级',
-    component: 'Select',
-    componentProps: {
-      placeholder: '请选择年级'
-    }
-  },
-  {
-    field: 'class_id',
-    label: '班级',
-    component: 'Select',
-    componentProps: {
-      placeholder: '请选择班级'
-    }
-  },
-  {
-    field: 'keyword',
-    label: '学生关键词',
     component: 'Input',
     componentProps: {
-      placeholder: '姓名/学号/联系方式'
+      placeholder: '请输入学校名称'
+    }
+  },
+  {
+    field: 'grade_name',
+    label: '年级',
+    component: 'Input',
+    componentProps: {
+      placeholder: '请输入年级'
+    }
+  },
+  {
+    field: 'class_name',
+    label: '班级',
+    component: 'Input',
+    componentProps: {
+      placeholder: '请输入班级'
     }
   }
 ])
@@ -93,9 +84,6 @@ const exportFields = ref([
   'raw_value',
   'score',
   'total_score',
-  'threshold_pass',
-  'threshold_excellent',
-  'threshold_full',
   'status',
   'version'
 ])
@@ -103,13 +91,42 @@ const exportFields = ref([
 const exportStatus = ref({
   show: false,
   success: true,
-  fileName: '2026春季体考-学生成绩报表.xlsx',
+  fileName: '',
+  url: '',
   errorMsg: ''
 })
 
-const handleExport = () => {
+const handleExport = async () => {
+  if (!searchParams.value.batch_id) {
+    ElMessage.warning('请先选择批次')
+    return
+  }
+  
   exportStatus.value.show = true
   exportStatus.value.success = true
+  exportStatus.value.fileName = '正在生成中...'
+  
+  try {
+    const res = await exportPeReportApi(searchParams.value)
+    if (res && res.data && res.data.url) {
+      exportStatus.value.success = true
+      exportStatus.value.url = res.data.url
+      exportStatus.value.fileName = res.data.url.split('/').pop() || '报表.xlsx'
+      ElMessage.success('报表生成成功')
+    } else {
+      throw new Error('生成失败')
+    }
+  } catch (e: any) {
+    exportStatus.value.success = false
+    exportStatus.value.errorMsg = e.message || '生成报表时发生错误'
+    ElMessage.error('报表生成失败')
+  }
+}
+
+const handleDownload = () => {
+  if (exportStatus.value.url) {
+    window.open(exportStatus.value.url)
+  }
 }
 
 const historyData = ref([
@@ -188,8 +205,16 @@ const loadConfig = async () => {
   }
 }
 
+const loadBatchOptions = async () => {
+  const res = await getPeBatchOptionsApi().catch(() => null)
+  if (res && Array.isArray(res.data)) {
+    batchOptions.value = res.data
+  }
+}
+
 onMounted(() => {
   loadConfig()
+  loadBatchOptions()
 })
 </script>
 

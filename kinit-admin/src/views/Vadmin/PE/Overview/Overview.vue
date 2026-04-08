@@ -1,491 +1,311 @@
-﻿<script setup lang="tsx">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+﻿<script setup lang="ts">
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import type { FormSchema } from '@/components/Form'
 import { ContentWrap } from '@/components/ContentWrap'
 import { Search } from '@/components/Search'
-import { FormSchema } from '@/components/Form'
-import { ElRow, ElCol, ElCard, ElTabs, ElTabPane } from 'element-plus'
+import type { SearchExpose } from '@/components/Search'
 import { Echart } from '@/components/Echart'
-import { Table, TableColumn } from '@/components/Table'
-import { getPeOverviewApi } from '@/api/vadmin/pe'
+import { ElCard, ElCol, ElEmpty, ElRow, ElStatistic, ElTable, ElTableColumn, ElTabs, ElTabPane } from 'element-plus'
+import { getPeBatchOptionsApi, getPeOverviewApi } from '@/api/vadmin/pe'
+import { getClassOptionsApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/api/vadmin/sport'
 
-defineOptions({
-  name: 'PEOverview'
-})
+defineOptions({ name: 'PEOverview' })
 
-const examTypeTab = ref('mid')
+const stageType = ref<'mid' | 'high'>('mid')
+const lastParams = ref<Record<string, any>>({})
+const searchRef = ref<SearchExpose>()
 
-const searchSchema = reactive<FormSchema[]>([
+const batchOptions = ref<any[]>([])
+const schoolOptions = ref<any[]>([])
+const gradeOptions = ref<any[]>([])
+const classOptions = ref<any[]>([])
+
+const result = ref<any>(null)
+const classList = ref<any[]>([])
+
+const searchSchema = computed<FormSchema[]>(() => [
   {
     field: 'batch_id',
     label: '批次',
     component: 'Select',
-    componentProps: {
-      placeholder: '请选择批次',
-      options: [
-        { label: '2026春季体考', value: 1 },
-        { label: '2025秋季体考', value: 2 }
-      ]
-    }
+    componentProps: { options: batchOptions.value, filterable: true, clearable: true }
   },
   {
-    field: 'school_id',
+    field: 'school_name',
     label: '学校',
     component: 'Select',
     componentProps: {
-      placeholder: '管理视角可不选学校',
+      options: schoolOptions.value,
+      filterable: true,
       clearable: true,
-      options: [
-        { label: '第一中学', value: 1 },
-        { label: '实验中学', value: 2 }
-      ]
+      onChange: async (val: string) => {
+        gradeOptions.value = []
+        classOptions.value = []
+        if (!val) return
+        const res = await getGradeOptionsApi({ school_name: val }).catch(() => null)
+        if (!res) return
+        gradeOptions.value = (res.data || []).map((i: any) => ({ label: i.label, value: i.grade_name || i.value }))
+      }
     }
   },
   {
-    field: 'grade_id',
+    field: 'grade_name',
     label: '年级',
     component: 'Select',
     componentProps: {
-      placeholder: '请选择年级',
-      options: [
-        { label: '初三', value: 3 },
-        { label: '高三', value: 6 }
-      ]
-    }
-  },
-  {
-    field: 'class_id',
-    label: '班级',
-    component: 'Select',
-    componentProps: {
-      placeholder: '请选择班级',
-      options: [
-        { label: '3年1班', value: 1 },
-        { label: '3年2班', value: 2 }
-      ]
-    }
-  }
-])
-
-const searchParams = ref<Record<string, any>>({})
-const setSearchParams = (data: Record<string, any>) => {
-  searchParams.value = data
-  loadData()
-}
-
-const analysisTitle = computed(() => {
-  return '某批次-某学校/所有学校（管理视角可不筛选学校） 体育项目情况分析'
-})
-
-const kpiData = ref({
-  total_students: 1380,
-  avg_score: 42.3,
-  pass_rate: 84.2,
-  excellent_rate: 29.7,
-  full_rate: 6.3
-})
-
-const itemAvgOptions = reactive({
-  title: { text: '项目均分柱状图（含门槛项）', textStyle: { fontSize: 15, fontWeight: 'normal' } },
-  tooltip: { trigger: 'axis' },
-  legend: { data: ['平均分', '及格线', '优秀线', '满分线'] },
-  grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-  xAxis: {
-    type: 'category',
-    data: ['门槛项', '跳绳', '跳远', '实心球']
-  },
-  yAxis: { type: 'value', max: 20 },
-  series: [
-    {
-      name: '平均分',
-      type: 'bar',
-      data: [11.2, 15.8, 11.6, 10.2],
-      itemStyle: { color: '#409eff' },
-      label: {
-        show: true,
-        position: 'top',
-        formatter: '{c}分'
-      },
-      markLine: {
-        symbol: 'none',
-        data: [
-          { yAxis: 10, name: '及格线', lineStyle: { color: '#E6A23C' } },
-          { yAxis: 14, name: '优秀线', lineStyle: { color: '#67C23A' } },
-          { yAxis: 20, name: '满分线', lineStyle: { color: '#000000' } }
-        ]
+      options: gradeOptions.value,
+      clearable: true,
+      onChange: async (val: string) => {
+        classOptions.value = []
+        if (!val) return
+        const res = await getClassOptionsApi({ grade_name: val }).catch(() => null)
+        if (!res) return
+        classOptions.value = (res.data || []).map((i: any) => ({ label: i.label, value: i.class_name || i.value }))
       }
     }
-  ]
+  },
+  {
+    field: 'class_name',
+    label: '班级',
+    component: 'Select',
+    componentProps: { options: classOptions.value, clearable: true }
+  }
+])
+
+const mainTitle = computed(() => {
+  const p = lastParams.value
+  const batchText = batchOptions.value.find((b: any) => b.value === p.batch_id)?.label || '某批次'
+  const schoolText = p.school_name || '所有学校'
+  return `${batchText}-${schoolText} 体育项目情况分析`
 })
 
-const classRateOptions = reactive({
-  title: { text: '班级分层率图', textStyle: { fontSize: 15, fontWeight: 'normal' } },
+const kpi = computed(() => {
+  const data = result.value?.kpi || {}
+  return {
+    totalStudents: data.total_students || 0,
+    avgScore: data.avg_score || 0,
+    passRate: data.pass_rate || 0,
+    excellentRate: data.excellent_rate || 0,
+    fullRate: data.full_rate || 0
+  }
+})
+
+const itemAvgOptions = reactive<any>({
+  title: { text: '项目均分对比', left: 'center', textStyle: { fontSize: 14, fontWeight: 600 } },
   tooltip: { trigger: 'axis' },
-  legend: { data: ['及格率', '优秀率', '满分率'] },
-  xAxis: { type: 'category', data: ['1班', '2班', '3班', '4班', '5班'] },
-  yAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
+  grid: { left: 30, right: 20, bottom: 40, top: 50, containLabel: true },
+  xAxis: { type: 'category', data: [], axisLabel: { interval: 0, rotate: 22 } },
+  yAxis: { type: 'value', name: '分值' },
   series: [
     {
-      name: '及格率',
+      name: '项目均分',
       type: 'bar',
-      data: [89, 83, 86, 78, 85],
-      itemStyle: { color: '#E6A23C' },
-      label: { show: true, position: 'top', formatter: '{c}%' }
-    },
-    {
-      name: '优秀率',
-      type: 'line',
-      data: [31, 24, 28, 20, 26],
-      smooth: true,
-      itemStyle: { color: '#67C23A' }
-    },
-    {
-      name: '满分率',
-      type: 'line',
-      data: [8, 5, 7, 3, 6],
-      smooth: true,
-      itemStyle: { color: '#000000' }
+      data: [],
+      itemStyle: { color: '#409EFF' },
+      label: { show: true, position: 'top' },
+      markLine: { symbol: ['none', 'none'], data: [] }
     }
   ]
 })
 
-const trendOptions = reactive({
-  title: { text: '批次趋势图', textStyle: { fontSize: 15, fontWeight: 'normal' } },
+const classRateOptions = reactive<any>({
+  title: { text: '班级分层率', left: 'center', textStyle: { fontSize: 14, fontWeight: 600 } },
   tooltip: { trigger: 'axis' },
-  legend: { data: ['总均分', '及格线', '优秀线', '满分线'] },
-  xAxis: { type: 'category', data: ['2025春', '2025秋', '2026春'] },
-  yAxis: { type: 'value', max: 50 },
+  legend: { bottom: 0 },
+  grid: { left: 25, right: 20, top: 45, bottom: 50, containLabel: true },
+  xAxis: { type: 'category', data: [], axisLabel: { interval: 0, rotate: 20 } },
+  yAxis: { type: 'value', max: 100, name: '%' },
   series: [
-    {
-      name: '总均分',
-      type: 'line',
-      smooth: true,
-      data: [37.8, 39.5, 42.3],
-      itemStyle: { color: '#409eff' }
-    },
-    {
-      name: '及格线',
-      type: 'line',
-      symbol: 'none',
-      lineStyle: { type: 'dashed', color: '#E6A23C' },
-      data: [30, 30, 30]
-    },
-    {
-      name: '优秀线',
-      type: 'line',
-      symbol: 'none',
-      lineStyle: { type: 'dashed', color: '#67C23A' },
-      data: [40, 40, 40]
-    },
-    {
-      name: '满分线',
-      type: 'line',
-      symbol: 'none',
-      lineStyle: { type: 'dashed', color: '#000000' },
-      data: [50, 50, 50]
-    }
+    { name: '及格率', type: 'bar', data: [], itemStyle: { color: '#E6A23C' } },
+    { name: '优秀率', type: 'bar', data: [], itemStyle: { color: '#67C23A' } },
+    { name: '满分率', type: 'bar', data: [], itemStyle: { color: '#000000' } }
   ]
 })
 
-const classData = ref([
-  {
-    school_name: '第一中学',
-    class_name: '3年1班',
-    gate_score: '3分56秒',
-    gate_point: 11.2,
-    rope_score: '178次',
-    rope_point: 18.1,
-    jump_score: '2.23m',
-    jump_point: 11.4,
-    ball_score: '8.4m',
-    ball_point: 10.5,
-    avg_total: 42.8,
-    pass_rate: 88.2,
-    excellent_rate: 32.3,
-    full_rate: 7.1
-  },
-  {
-    school_name: '第一中学',
-    class_name: '3年2班',
-    gate_score: '4分01秒',
-    gate_point: 10.7,
-    rope_score: '174次',
-    rope_point: 17.3,
-    jump_score: '2.20m',
-    jump_point: 10.9,
-    ball_score: '8.1m',
-    ball_point: 10.1,
-    avg_total: 40.5,
-    pass_rate: 83.6,
-    excellent_rate: 27.2,
-    full_rate: 5.4
-  },
-  {
-    school_name: '实验中学',
-    class_name: '3年1班',
-    gate_score: '3分59秒',
-    gate_point: 10.9,
-    rope_score: '176次',
-    rope_point: 17.8,
-    jump_score: '2.22m',
-    jump_point: 11.1,
-    ball_score: '8.3m',
-    ball_point: 10.2,
-    avg_total: 41.9,
-    pass_rate: 85.3,
-    excellent_rate: 28.9,
-    full_rate: 6.0
-  }
-])
+const batchTrendOptions = reactive<any>({
+  title: { text: '批次趋势', left: 'center', textStyle: { fontSize: 14, fontWeight: 600 } },
+  tooltip: { trigger: 'axis' },
+  legend: { bottom: 0 },
+  grid: { left: 25, right: 20, top: 45, bottom: 50, containLabel: true },
+  xAxis: { type: 'category', data: [] },
+  yAxis: { type: 'value', name: '总均分' },
+  series: [
+    { name: '总均分', type: 'line', smooth: true, data: [], itemStyle: { color: '#409EFF' }, label: { show: true, position: 'top' } },
+    { name: '及格线', type: 'line', smooth: true, data: [], lineStyle: { type: 'dashed', color: '#E6A23C' } },
+    { name: '优秀线', type: 'line', smooth: true, data: [], lineStyle: { type: 'dashed', color: '#67C23A' } },
+    { name: '满分线', type: 'line', smooth: true, data: [], lineStyle: { type: 'dashed', color: '#000000' } }
+  ]
+})
 
-const renderScorePoint = (score: string, point: number) => (
-  <div class="leading-5">
-    <div>{score}</div>
-    <div class="text-12px text-gray-500">{point}分</div>
-  </div>
-)
+const buildCharts = (data: any) => {
+  const itemAvg = data?.item_avg || {}
+  const threshold = itemAvg.threshold || {}
+  itemAvgOptions.xAxis.data = itemAvg.items || []
+  itemAvgOptions.series[0].data = itemAvg.values || []
+  itemAvgOptions.series[0].markLine.data = [
+    { yAxis: threshold.pass || 10, name: '及格阈值', lineStyle: { color: '#E6A23C', type: 'dashed' } },
+    { yAxis: threshold.excellent || 14, name: '优秀阈值', lineStyle: { color: '#67C23A', type: 'dashed' } },
+    { yAxis: threshold.full || 20, name: '满分阈值', lineStyle: { color: '#000000', type: 'dashed' } }
+  ]
 
-const tableColumns = reactive<TableColumn[]>([
-  { field: 'school_name', label: '学校', width: '120px' },
-  { field: 'class_name', label: '班级', width: '100px' },
-  {
-    field: 'gate_item',
-    label: '门槛项(成绩/分)',
-    minWidth: '140px',
-    slots: {
-      default: (data: any) => renderScorePoint(data.row.gate_score, data.row.gate_point)
-    }
-  },
-  {
-    field: 'rope_item',
-    label: '跳绳(成绩/分)',
-    minWidth: '130px',
-    slots: {
-      default: (data: any) => renderScorePoint(data.row.rope_score, data.row.rope_point)
-    }
-  },
-  {
-    field: 'jump_item',
-    label: '跳远(成绩/分)',
-    minWidth: '130px',
-    slots: {
-      default: (data: any) => renderScorePoint(data.row.jump_score, data.row.jump_point)
-    }
-  },
-  {
-    field: 'ball_item',
-    label: '实心球(成绩/分)',
-    minWidth: '130px',
-    slots: {
-      default: (data: any) => renderScorePoint(data.row.ball_score, data.row.ball_point)
-    }
-  },
-  { field: 'avg_total', label: '班均分', width: '90px' },
-  {
-    field: 'pass_rate',
-    label: '及格率',
-    width: '90px',
-    slots: {
-      default: (data: any) => <span class="text-pass-yellow">{data.row.pass_rate}%</span>
-    }
-  },
-  {
-    field: 'excellent_rate',
-    label: '优秀率',
-    width: '90px',
-    slots: {
-      default: (data: any) => <span class="text-excellent-green">{data.row.excellent_rate}%</span>
-    }
-  },
-  {
-    field: 'full_rate',
-    label: '满分率',
-    width: '90px',
-    slots: {
-      default: (data: any) => <span class="text-full-black">{data.row.full_rate}%</span>
-    }
-  }
-])
+  const classRate = data?.class_rate || {}
+  classRateOptions.xAxis.data = classRate.classes || []
+  classRateOptions.series[0].data = classRate.pass_rate || []
+  classRateOptions.series[1].data = classRate.excellent_rate || []
+  classRateOptions.series[2].data = classRate.full_rate || []
 
-const tableSpanMethod = ({ rowIndex, column }: any) => {
-  if (column.property !== 'school_name') {
-    return [1, 1]
+  const trend = data?.batch_trend || {}
+  batchTrendOptions.xAxis.data = trend.batches || []
+  batchTrendOptions.series[0].data = trend.avg_score || []
+  batchTrendOptions.series[1].data = trend.pass_line || []
+  batchTrendOptions.series[2].data = trend.excellent_line || []
+  batchTrendOptions.series[3].data = trend.full_line || []
+}
+
+const loadData = async (params: Record<string, any> = lastParams.value) => {
+  const query = { ...params, stage_type: stageType.value }
+  lastParams.value = { ...params }
+  const res = await getPeOverviewApi(query).catch(() => null)
+  if (!res?.data) {
+    result.value = null
+    classList.value = []
+    return
   }
-  const currentSchool = classData.value[rowIndex]?.school_name
-  const prevSchool = classData.value[rowIndex - 1]?.school_name
-  if (currentSchool === prevSchool) {
+  result.value = res.data
+  classList.value = res.data.class_list || []
+  buildCharts(res.data)
+}
+
+const loadBatchOptions = async () => {
+  const batchRes = await getPeBatchOptionsApi({ stage_type: stageType.value }).catch(() => null)
+  batchOptions.value = batchRes?.data || []
+}
+
+const loadSchoolOptions = async () => {
+  const schoolRes = await getSchoolOptionsApi({ stage_type: stageType.value }).catch(() => null)
+  schoolOptions.value = (schoolRes?.data || []).map((i: any) => ({ label: i.label, value: i.school_name || i.value }))
+}
+
+const buildDefaultParams = () => {
+  const params: Record<string, any> = { grade_name: null, class_name: null }
+  if (batchOptions.value.length) params.batch_id = batchOptions.value[0].value
+  if (schoolOptions.value.length) params.school_name = schoolOptions.value[0].value
+  return params
+}
+
+const syncSearchValues = async (params: Record<string, any>) => {
+  await nextTick()
+  await searchRef.value?.setValues(params)
+}
+
+const onTabChange = async () => {
+  lastParams.value = {}
+  gradeOptions.value = []
+  classOptions.value = []
+  await Promise.all([loadBatchOptions(), loadSchoolOptions()])
+  const params = buildDefaultParams()
+  await syncSearchValues(params)
+  await loadData(params)
+}
+
+const schoolSpanMethod = ({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: number }) => {
+  if (columnIndex !== 0) return [1, 1]
+  const rows = classList.value
+  const current = rows[rowIndex]
+  const prev = rows[rowIndex - 1]
+  if (prev && prev.school_name === current.school_name) {
     return [0, 0]
   }
-  let spanCount = 1
-  for (let i = rowIndex + 1; i < classData.value.length; i++) {
-    if (classData.value[i].school_name === currentSchool) {
-      spanCount += 1
-    } else {
-      break
-    }
+  let count = 1
+  for (let i = rowIndex + 1; i < rows.length; i += 1) {
+    if (rows[i].school_name === current.school_name) count += 1
+    else break
   }
-  return [spanCount, 1]
+  return [count, 1]
 }
 
-const loadData = async () => {
-  const res = await getPeOverviewApi({
-    ...searchParams.value,
-    stage_type: examTypeTab.value
-  }).catch(() => null)
-  if (!res) return
-  const data = res.data || {}
-  if (data.kpi) {
-    kpiData.value = Object.assign(kpiData.value, data.kpi)
-  }
-  if (data.item_avg) {
-    itemAvgOptions.xAxis.data = data.item_avg.items || []
-    itemAvgOptions.series[0].data = data.item_avg.values || []
-    const threshold = data.item_avg.threshold || {}
-    itemAvgOptions.series[0].markLine.data = [
-      { yAxis: threshold.pass || 10, name: '及格线', lineStyle: { color: '#E6A23C' } },
-      { yAxis: threshold.excellent || 14, name: '优秀线', lineStyle: { color: '#67C23A' } },
-      { yAxis: threshold.full || 20, name: '满分线', lineStyle: { color: '#000000' } }
-    ]
-  }
-  if (data.class_rate) {
-    classRateOptions.xAxis.data = data.class_rate.classes || []
-    classRateOptions.series[0].data = data.class_rate.pass_rate || []
-    classRateOptions.series[1].data = data.class_rate.excellent_rate || []
-    classRateOptions.series[2].data = data.class_rate.full_rate || []
-  }
-  if (data.batch_trend) {
-    trendOptions.xAxis.data = data.batch_trend.batches || []
-    trendOptions.series[0].data = data.batch_trend.avg_score || []
-    trendOptions.series[1].data = data.batch_trend.pass_line || []
-    trendOptions.series[2].data = data.batch_trend.excellent_line || []
-    trendOptions.series[3].data = data.batch_trend.full_line || []
-  }
-  if (Array.isArray(data.class_list)) {
-    classData.value = data.class_list
-  }
-}
-
-onMounted(() => {
-  loadData()
-})
-
-watch(examTypeTab, () => {
-  loadData()
+onMounted(async () => {
+  await Promise.all([loadBatchOptions(), loadSchoolOptions()])
+  const params = buildDefaultParams()
+  await syncSearchValues(params)
+  await loadData(params)
 })
 </script>
 
 <template>
   <ContentWrap>
-    <ElTabs v-model="examTypeTab" class="mb-10px">
+    <ElTabs v-model="stageType" class="mb-10px" @tab-change="onTabChange">
       <ElTabPane label="初中" name="mid" />
       <ElTabPane label="高中" name="high" />
     </ElTabs>
 
-    <Search
-      :schema="searchSchema"
-      @search="setSearchParams"
-      @reset="setSearchParams"
-      class="mb-10px"
-    />
+    <Search ref="searchRef" :schema="searchSchema" class="mb-12px" @search="loadData" @reset="loadData" />
 
-    <ElCard shadow="never" class="main-card">
-      <template #header>{{ analysisTitle }}</template>
-      <ElRow :gutter="20" class="mb-20px">
-        <ElCol :span="4">
-          <ElCard shadow="hover" class="text-center">
-            <div class="text-gray-400 text-14px mb-10px">参考人数</div>
-            <div class="text-24px font-bold">{{ kpiData.total_students }}</div>
-          </ElCard>
-        </ElCol>
-        <ElCol :span="4">
-          <ElCard shadow="hover" class="text-center">
-            <div class="text-gray-400 text-14px mb-10px">平均分</div>
-            <div class="text-24px font-bold text-blue-500">{{ kpiData.avg_score }}</div>
-          </ElCard>
-        </ElCol>
-        <ElCol :span="4">
-          <ElCard shadow="hover" class="text-center">
-            <div class="text-gray-400 text-14px mb-10px">及格率</div>
-            <div class="text-24px font-bold text-pass-yellow">{{ kpiData.pass_rate }}%</div>
-          </ElCard>
-        </ElCol>
-        <ElCol :span="4">
-          <ElCard shadow="hover" class="text-center">
-            <div class="text-gray-400 text-14px mb-10px">优秀率</div>
-            <div class="text-24px font-bold text-excellent-green"
-              >{{ kpiData.excellent_rate }}%</div
-            >
-          </ElCard>
-        </ElCol>
-        <ElCol :span="4">
-          <ElCard shadow="hover" class="text-center">
-            <div class="text-gray-400 text-14px mb-10px">满分率</div>
-            <div class="text-24px font-bold text-full-black">{{ kpiData.full_rate }}%</div>
-          </ElCard>
-        </ElCol>
-      </ElRow>
+    <ElCard shadow="never" class="analysis-card">
+      <div class="card-title">{{ mainTitle }}</div>
 
-      <ElRow :gutter="20" class="mb-20px">
-        <ElCol :span="14">
-          <ElCard shadow="never" title="项目均分柱状图">
-            <Echart :options="itemAvgOptions" height="350px" />
-          </ElCard>
-        </ElCol>
-        <ElCol :span="10">
-          <ElCard shadow="never" title="班级分层率图">
-            <Echart :options="classRateOptions" height="350px" />
-          </ElCard>
-        </ElCol>
-      </ElRow>
+      <div v-if="!result || !kpi.totalStudents" class="py-30px">
+        <ElEmpty description="暂无可展示数据" />
+      </div>
 
-      <ElRow :gutter="20" class="mb-20px">
-        <ElCol :span="24">
-          <ElCard shadow="never" title="批次趋势图">
-            <Echart :options="trendOptions" height="320px" />
-          </ElCard>
-        </ElCol>
-      </ElRow>
+      <template v-else>
+        <ElRow :gutter="14" class="mb-14px">
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6"><ElCard shadow="hover"><ElStatistic title="参考人数" :value="kpi.totalStudents" /></ElCard></ElCol>
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6"><ElCard shadow="hover"><ElStatistic title="平均分" :value="kpi.avgScore" :precision="2" /></ElCard></ElCol>
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6"><ElCard shadow="hover" class="kpi-pass"><ElStatistic title="及格率" :value="kpi.passRate" suffix="%" :precision="2" /></ElCard></ElCol>
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6"><ElCard shadow="hover" class="kpi-excellent"><ElStatistic title="优秀率" :value="kpi.excellentRate" suffix="%" :precision="2" /></ElCard></ElCol>
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6"><ElCard shadow="hover" class="kpi-full"><ElStatistic title="满分率" :value="kpi.fullRate" suffix="%" :precision="2" /></ElCard></ElCol>
+        </ElRow>
 
-      <div class="mb-8px text-15px font-600">学校分组班级成绩列表</div>
-      <Table
-        :columns="tableColumns"
-        :data="classData"
-        :pagination="false"
-        :border="false"
-        :span-method="tableSpanMethod"
-      />
+        <ElRow :gutter="14" class="mb-14px">
+          <ElCol :span="14"><Echart :options="itemAvgOptions" height="320px" /></ElCol>
+          <ElCol :span="10"><Echart :options="classRateOptions" height="320px" /></ElCol>
+        </ElRow>
+
+        <Echart :options="batchTrendOptions" height="300px" class="mb-14px" />
+
+        <ElTable :data="classList" :span-method="schoolSpanMethod" stripe>
+          <ElTableColumn prop="school_name" label="学校" min-width="160" />
+          <ElTableColumn prop="class_name" label="班级" min-width="120" />
+          <ElTableColumn label="门槛项" min-width="150" align="center">
+            <template #default="{ row }">
+              <div>{{ row.gate_score }}</div>
+              <div class="sub-cell">{{ row.gate_point }}分</div>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="跳绳" min-width="130" align="center">
+            <template #default="{ row }"><div>{{ row.rope_score }}</div><div class="sub-cell">{{ row.rope_point }}分</div></template>
+          </ElTableColumn>
+          <ElTableColumn label="跳远" min-width="130" align="center">
+            <template #default="{ row }"><div>{{ row.jump_score }}</div><div class="sub-cell">{{ row.jump_point }}分</div></template>
+          </ElTableColumn>
+          <ElTableColumn label="实心球" min-width="130" align="center">
+            <template #default="{ row }"><div>{{ row.ball_score }}</div><div class="sub-cell">{{ row.ball_point }}分</div></template>
+          </ElTableColumn>
+          <ElTableColumn prop="avg_total" label="总均分" min-width="100" align="center" />
+          <ElTableColumn prop="pass_rate" label="及格率" min-width="90" align="center">
+            <template #default="{ row }"><span class="kpi-pass-text">{{ row.pass_rate }}%</span></template>
+          </ElTableColumn>
+          <ElTableColumn prop="excellent_rate" label="优秀率" min-width="90" align="center">
+            <template #default="{ row }"><span class="kpi-excellent-text">{{ row.excellent_rate }}%</span></template>
+          </ElTableColumn>
+          <ElTableColumn prop="full_rate" label="满分率" min-width="90" align="center">
+            <template #default="{ row }"><span class="kpi-full-text">{{ row.full_rate }}%</span></template>
+          </ElTableColumn>
+        </ElTable>
+      </template>
     </ElCard>
   </ContentWrap>
 </template>
 
-<style scoped lang="less">
-:deep(.el-card__header) {
-  text-align: center;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-:deep(.main-card > .el-card__header) {
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.text-pass-yellow {
-  color: #e6a23c;
-}
-
-.text-fail-red {
-  color: #f56c6c;
-}
-
-.text-excellent-green {
-  color: #67c23a;
-}
-
-.text-full-black {
-  color: #000000;
-}
-
-.text-blue-500 {
-  color: #409eff;
-}
+<style scoped>
+.analysis-card { border-radius: 10px; }
+.card-title { text-align: center; font-size: 22px; font-weight: 700; margin-bottom: 16px; }
+.sub-cell { color: #909399; font-size: 12px; }
+.analysis-card :deep(.el-statistic__head) { font-size: 14px; color: #606266; font-weight: 500; }
+.kpi-pass :deep(.el-statistic__content-value), .kpi-pass :deep(.el-statistic__content), .kpi-pass-text { color: #E6A23C !important; }
+.kpi-fail :deep(.el-statistic__content-value), .kpi-fail :deep(.el-statistic__content), .kpi-fail-text { color: #F56C6C !important; }
+.kpi-excellent :deep(.el-statistic__content-value), .kpi-excellent :deep(.el-statistic__content), .kpi-excellent-text { color: #67C23A !important; }
+.kpi-full :deep(.el-statistic__content-value), .kpi-full :deep(.el-statistic__content), .kpi-full-text { color: #000000 !important; }
 </style>
+

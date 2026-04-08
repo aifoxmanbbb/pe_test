@@ -49,7 +49,13 @@ async def list_standard_with_items(
 
     result = []
     for s in standards:
-        stage_text = '初中' if s.stage_type == 'mid' else ('高中' if s.stage_type == 'high' else s.stage_type)
+        stage_map = {
+            'primary': '小学',
+            'mid': '初中',
+            'high': '高中',
+            'university': '大学'
+        }
+        stage_text = stage_map.get(s.stage_type, s.stage_type)
         source_text = {
             'pdf': 'PDF识别+人工确认',
             'excel': 'Excel导入',

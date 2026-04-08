@@ -232,7 +232,7 @@ CREATE TABLE `vadmin_auth_user`  (
 -- ----------------------------
 -- Records of vadmin_auth_user
 -- ----------------------------
-INSERT INTO `vadmin_auth_user` VALUES (NULL, '15020221010', NULL, 'kinit', 'admin', '$2b$12$Ce7eSUKIIl8DMKeDyNHyr.Dp4aesQCM70RePigRVEny1Eql31R0Cq', '1', 1, 1, '127.0.0.1', '2024-01-20 11:08:06', 1, NULL, 0, 1, '2022-08-11 20:17:04', '2024-01-20 11:08:03', NULL, 0);
+INSERT INTO `vadmin_auth_user` VALUES (NULL, '15802375679', NULL, 'admin', 'admin', '$2b$12$Ce7eSUKIIl8DMKeDyNHyr.Dp4aesQCM70RePigRVEny1Eql31R0Cq', '1', 1, 1, '127.0.0.1', '2024-01-20 11:08:06', 1, NULL, 0, 1, '2022-08-11 20:17:04', '2024-01-20 11:08:03', NULL, 0);
 
 -- ----------------------------
 -- Table structure for vadmin_auth_user_depts
@@ -514,9 +514,9 @@ CREATE TABLE `vadmin_system_settings`  (
 -- ----------------------------
 -- Records of vadmin_system_settings
 -- ----------------------------
-INSERT INTO `vadmin_system_settings` VALUES ('系统标题', 'web_title', 'Kinit', NULL, 0, 1, 1, '2022-10-31 20:47:43', '2023-02-27 09:36:07', NULL, 0);
+INSERT INTO `vadmin_system_settings` VALUES ('系统标题', 'web_title', '体育测试', NULL, 0, 1, 1, '2022-10-31 20:47:43', '2023-02-27 09:36:07', NULL, 0);
 INSERT INTO `vadmin_system_settings` VALUES ('系统LOGO', 'web_logo', '/media/system/logo.png', NULL, 0, 1, 2, '2022-10-31 20:47:43', '2023-02-27 09:36:07', NULL, 0);
-INSERT INTO `vadmin_system_settings` VALUES ('系统描述', 'web_desc', 'Kinit 是一套开箱即用的中后台解决方案，可以作为新项目的启动模版。', NULL, 0, 1, 3, '2022-10-31 20:47:43', '2023-02-27 09:36:07', NULL, 0);
+INSERT INTO `vadmin_system_settings` VALUES ('系统描述', 'web_desc', '体育测试 是一套开箱即用的中后台解决方案，可以作为新项目的启动模版。', NULL, 0, 1, 3, '2022-10-31 20:47:43', '2023-02-27 09:36:07', NULL, 0);
 INSERT INTO `vadmin_system_settings` VALUES ('ICO图标', 'web_ico', '/media/system/favicon.ico', NULL, 0, 1, 4, '2022-10-31 20:47:43', '2023-01-16 18:10:07', NULL, 0);
 INSERT INTO `vadmin_system_settings` VALUES ('备案号', 'web_icp_number', '豫ICP备19033601号-1', NULL, 0, 1, 5, '2022-10-31 20:47:43', '2023-02-27 09:36:07', NULL, 0);
 INSERT INTO `vadmin_system_settings` VALUES ('版权信息', 'web_copyright', 'Copyright ©2022-present K', NULL, 0, 1, 6, '2022-10-31 20:47:43', '2023-02-27 09:36:07', NULL, 0);

@@ -32,11 +32,11 @@ const setSystemConfig = async () => {
   if (res) {
     appStore.setTitle(res.data.web_title || import.meta.env.VITE_APP_TITLE)
     appStore.setLogoImage(res.data.web_logo || '/media/system/logo.png')
-    appStore.setFooterContent(res.data.web_copyright || 'Copyright ©2022-present K')
+    appStore.setFooterContent(res.data.web_copyright || 'Copyright ©2026')
     appStore.setIcpNumber(res.data.web_icp_number || '')
     addMeta(
       'description',
-      res.data.web_desc || 'Kinit 是一套开箱即用的中后台解决方案，可以作为新项目的启动模版。'
+      res.data.web_desc || '体育测试管理系统'
     )
   }
 }

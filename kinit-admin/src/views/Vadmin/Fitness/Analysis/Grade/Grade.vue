@@ -1,350 +1,231 @@
-<script setup lang="tsx">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+﻿<script setup lang="ts">
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import type { FormSchema } from '@/components/Form'
 import { ContentWrap } from '@/components/ContentWrap'
 import { Search } from '@/components/Search'
-import { FormSchema } from '@/components/Form'
-import { ElRow, ElCol, ElCard, ElTabs, ElTabPane } from 'element-plus'
+import type { SearchExpose } from '@/components/Search'
 import { Echart } from '@/components/Echart'
-import { Table, TableColumn } from '@/components/Table'
-import { getFitnessGradeAnalysisApi } from '@/api/vadmin/fitness'
+import { ElCard, ElCol, ElEmpty, ElRow, ElStatistic, ElTable, ElTableColumn, ElTabs, ElTabPane } from 'element-plus'
+import { getFitnessBatchOptionsApi, getFitnessGradeAnalysisApi } from '@/api/vadmin/fitness'
+import { getGradeOptionsApi, getSchoolOptionsApi } from '@/api/vadmin/sport'
 
-defineOptions({
-  name: 'FitnessGradeAnalysis'
-})
+defineOptions({ name: 'FitnessGradeAnalysis' })
 
-const stageTab = ref('mid')
+const stageType = ref<'primary' | 'mid' | 'high' | 'university'>('primary')
+const lastParams = ref<Record<string, any>>({})
+const searchRef = ref<SearchExpose>()
 
-const searchSchema = reactive<FormSchema[]>([
+const batchOptions = ref<any[]>([])
+const schoolOptions = ref<any[]>([])
+const gradeOptions = ref<any[]>([])
+
+const kpi = ref<any>(null)
+const classList = ref<any[]>([])
+
+const searchSchema = computed<FormSchema[]>(() => [
+  { field: 'batch_id', label: '批次', component: 'Select', required: true, componentProps: { options: batchOptions.value, filterable: true } },
   {
-    field: 'batch_id',
-    label: '批次',
-    component: 'Select',
-    componentProps: {
-      placeholder: '请选择批次',
-      options: [{ label: '2026春季体测', value: 1 }]
-    }
-  },
-  {
-    field: 'school_id',
+    field: 'school_name',
     label: '学校',
     component: 'Select',
     componentProps: {
-      placeholder: '请选择学校',
-      options: [
-        { label: '第一中学', value: 1 },
-        { label: '实验中学', value: 2 }
-      ]
+      options: schoolOptions.value,
+      clearable: true,
+      filterable: true,
+      onChange: async (val: string) => {
+        gradeOptions.value = []
+        if (!val) return
+        const res = await getGradeOptionsApi({ school_name: val }).catch(() => null)
+        gradeOptions.value = (res?.data || []).map((i: any) => ({ label: i.label, value: i.grade_name || i.value }))
+      }
     }
   },
-  {
-    field: 'grade_id',
-    label: '年级',
-    component: 'Select',
-    componentProps: {
-      placeholder: '请选择年级',
-      options: [
-        { label: '初三', value: 3 },
-        { label: '高三', value: 6 }
-      ]
-    }
-  }
+  { field: 'grade_name', label: '年级', component: 'Select', required: true, componentProps: { options: gradeOptions.value } }
 ])
 
-const searchParams = ref<Record<string, any>>({})
-const setSearchParams = (data: Record<string, any>) => {
-  searchParams.value = data
-  loadData()
+const titleText = computed(() => {
+  const p = lastParams.value
+  const batchText = batchOptions.value.find((b: any) => b.value === p.batch_id)?.label || '某批次'
+  return `${batchText}-${p.school_name || '-'}-${p.grade_name || '-'} 体质测试情况分析`
+})
+
+const classItemAvgOptions = reactive<any>({
+  title: { text: '各班单项均分', left: 'center', textStyle: { fontSize: 14, fontWeight: 600 } },
+  tooltip: { trigger: 'axis' },
+  legend: { bottom: 0 },
+  grid: { left: 25, right: 20, top: 45, bottom: 50, containLabel: true },
+  xAxis: { type: 'category', data: [] },
+  yAxis: { type: 'value', name: '分值' },
+  series: []
+})
+
+const classItemRateOptions = reactive<any>({
+  title: { text: '各班单项达成率', left: 'center', textStyle: { fontSize: 14, fontWeight: 600 } },
+  tooltip: { trigger: 'axis' },
+  legend: { bottom: 0 },
+  grid: { left: 25, right: 20, top: 45, bottom: 50, containLabel: true },
+  xAxis: { type: 'category', data: [] },
+  yAxis: { type: 'value', max: 100, name: '%' },
+  series: [
+    { name: '及格率', type: 'bar', data: [], itemStyle: { color: '#E6A23C' } },
+    { name: '优秀率', type: 'bar', data: [], itemStyle: { color: '#67C23A' } },
+    { name: '满分率', type: 'bar', data: [], itemStyle: { color: '#000000' } }
+  ]
+})
+
+const classHistoryOptions = reactive<any>({
+  title: { text: '各班批次趋势', left: 'center', textStyle: { fontSize: 14, fontWeight: 600 } },
+  tooltip: { trigger: 'axis' },
+  legend: { bottom: 0 },
+  grid: { left: 25, right: 20, top: 45, bottom: 50, containLabel: true },
+  xAxis: { type: 'category', data: [] },
+  yAxis: { type: 'value', name: '分值' },
+  series: []
+})
+
+const applyCharts = (data: any) => {
+  const avgData = data?.class_item_avg || {}
+  classItemAvgOptions.xAxis.data = avgData.classes || []
+  classItemAvgOptions.series = (avgData.series || []).map((s: any, idx: number) => ({
+    name: s.name,
+    type: 'bar',
+    data: s.values || [],
+    label: { show: true, position: 'top' },
+    itemStyle: { color: ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C'][idx % 4] }
+  }))
+
+  const rateData = data?.class_item_rate || {}
+  classItemRateOptions.xAxis.data = rateData.classes || []
+  classItemRateOptions.series[0].data = rateData.pass_rate || []
+  classItemRateOptions.series[1].data = rateData.excellent_rate || []
+  classItemRateOptions.series[2].data = rateData.full_rate || []
+
+  const history = data?.class_item_history || {}
+  classHistoryOptions.xAxis.data = history.batches || []
+  classHistoryOptions.series = (history.series || []).map((s: any, idx: number) => ({
+    name: s.name,
+    type: 'line',
+    smooth: true,
+    data: s.values || [],
+    label: { show: true, position: 'top' },
+    itemStyle: { color: ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#000000'][idx % 5] }
+  }))
 }
 
-const panelTitle = computed(() => '某批次-某学校-年级 体质测试情况分析')
-
-const kpiData = ref({
-  class_count: 12,
-  student_count: 638,
-  item_records: 5104,
-  fail_item_records: 512,
-  full_item_records: 304
-})
-
-const classItemAvgOptions = reactive({
-  title: { text: '各班单项均分对比', textStyle: { fontSize: 15, fontWeight: 'normal' } },
-  tooltip: { trigger: 'axis' },
-  legend: { data: ['BMI均分', '肺活量均分', '50米均分', '坐位体前屈均分'] },
-  xAxis: { type: 'category', data: ['1班', '2班', '3班', '4班', '5班'] },
-  yAxis: { type: 'value', max: 100 },
-  series: [
-    { name: 'BMI均分', type: 'bar', data: [76, 70, 74, 68, 72] },
-    { name: '肺活量均分', type: 'bar', data: [84, 78, 81, 75, 79] },
-    { name: '50米均分', type: 'bar', data: [72, 66, 70, 63, 68] },
-    { name: '坐位体前屈均分', type: 'bar', data: [78, 72, 76, 69, 74] }
-  ]
-})
-
-const classItemRateOptions = reactive({
-  title: { text: '各班单项率对比(50米)', textStyle: { fontSize: 15, fontWeight: 'normal' } },
-  tooltip: { trigger: 'axis' },
-  legend: { data: ['及格率', '优秀率', '满分率'] },
-  xAxis: { type: 'category', data: ['1班', '2班', '3班', '4班', '5班'] },
-  yAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
-  series: [
-    { name: '及格率', type: 'bar', data: [89, 81, 86, 77, 84], itemStyle: { color: '#E6A23C' } },
-    {
-      name: '优秀率',
-      type: 'line',
-      smooth: true,
-      data: [28, 21, 26, 18, 24],
-      itemStyle: { color: '#67C23A' }
-    },
-    {
-      name: '满分率',
-      type: 'line',
-      smooth: true,
-      data: [5, 2, 4, 1, 3],
-      itemStyle: { color: '#000000' }
-    }
-  ]
-})
-
-const classHistoryItemTrendOptions = reactive({
-  title: {
-    text: '各班批次单项均分趋势(肺活量)',
-    textStyle: { fontSize: 15, fontWeight: 'normal' }
-  },
-  tooltip: { trigger: 'axis' },
-  legend: { data: ['1班', '2班', '3班', '4班'] },
-  xAxis: { type: 'category', data: ['2025春', '2025秋', '2026春', '2026秋'] },
-  yAxis: { type: 'value', max: 100 },
-  series: [
-    { name: '1班', type: 'line', smooth: true, data: [76, 80, 84, 86] },
-    { name: '2班', type: 'line', smooth: true, data: [71, 74, 78, 80] },
-    { name: '3班', type: 'line', smooth: true, data: [73, 77, 81, 83] },
-    { name: '4班', type: 'line', smooth: true, data: [69, 72, 75, 78] }
-  ]
-})
-
-const classTableData = ref([
-  {
-    class_name: '1班',
-    bmi_score: '22.1',
-    bmi_point: 76,
-    bmi_rate: '及格90% / 优秀33% / 满分8%',
-    lung_score: '4200ml',
-    lung_point: 84,
-    lung_rate: '及格95% / 优秀42% / 满分12%',
-    sprint_score: '7.8秒',
-    sprint_point: 72,
-    sprint_rate: '及格89% / 优秀28% / 满分5%'
-  },
-  {
-    class_name: '2班',
-    bmi_score: '22.8',
-    bmi_point: 70,
-    bmi_rate: '及格83% / 优秀26% / 满分5%',
-    lung_score: '3950ml',
-    lung_point: 78,
-    lung_rate: '及格91% / 优秀36% / 满分9%',
-    sprint_score: '8.3秒',
-    sprint_point: 66,
-    sprint_rate: '及格81% / 优秀21% / 满分2%'
+const loadData = async (params: Record<string, any> = lastParams.value) => {
+  const query = { ...params, stage_type: stageType.value }
+  lastParams.value = { ...params }
+  const res = await getFitnessGradeAnalysisApi(query).catch(() => null)
+  if (!res?.data?.kpi) {
+    kpi.value = null
+    classList.value = []
+    return
   }
-])
-
-const renderScorePoint = (score: string, point: number) => (
-  <div class="leading-5">
-    <div>{score}</div>
-    <div class="text-12px text-gray-500">{point}分</div>
-  </div>
-)
-
-const tableColumns = reactive<TableColumn[]>([
-  { field: 'class_name', label: '班级', width: '80px' },
-  {
-    field: 'bmi_item',
-    label: 'BMI(均成绩/均分)',
-    minWidth: '140px',
-    slots: {
-      default: (data: any) => renderScorePoint(data.row.bmi_score, data.row.bmi_point)
-    }
-  },
-  { field: 'bmi_rate', label: 'BMI情况', minWidth: '180px' },
-  {
-    field: 'lung_item',
-    label: '肺活量(均成绩/均分)',
-    minWidth: '150px',
-    slots: {
-      default: (data: any) => renderScorePoint(data.row.lung_score, data.row.lung_point)
-    }
-  },
-  { field: 'lung_rate', label: '肺活量情况', minWidth: '180px' },
-  {
-    field: 'sprint_item',
-    label: '50米(均成绩/均分)',
-    minWidth: '140px',
-    slots: {
-      default: (data: any) => renderScorePoint(data.row.sprint_score, data.row.sprint_point)
-    }
-  },
-  { field: 'sprint_rate', label: '50米情况', minWidth: '180px' }
-])
-
-const loadData = async () => {
-  const res = await getFitnessGradeAnalysisApi({
-    ...searchParams.value,
-    stage_type: stageTab.value
-  }).catch(() => null)
-  if (!res) return
-  const data = res.data || {}
-  if (data.kpi) {
-    kpiData.value = Object.assign(kpiData.value, data.kpi)
-  }
-  if (data.class_item_avg) {
-    classItemAvgOptions.xAxis.data = data.class_item_avg.classes || []
-    const avgSeries = data.class_item_avg.series || []
-    classItemAvgOptions.legend.data = avgSeries.map((s: any) => s.name)
-    classItemAvgOptions.series = avgSeries.map((s: any) => ({
-      name: s.name,
-      type: 'bar',
-      data: s.values || []
-    }))
-  }
-  if (data.class_item_rate) {
-    classItemRateOptions.xAxis.data = data.class_item_rate.classes || []
-    classItemRateOptions.series[0].data = data.class_item_rate.pass_rate || []
-    classItemRateOptions.series[1].data = data.class_item_rate.excellent_rate || []
-    classItemRateOptions.series[2].data = data.class_item_rate.full_rate || []
-  }
-  if (data.class_item_history) {
-    classHistoryItemTrendOptions.xAxis.data = data.class_item_history.batches || []
-    const historySeries = data.class_item_history.series || []
-    classHistoryItemTrendOptions.legend.data = historySeries.map((s: any) => s.name)
-    classHistoryItemTrendOptions.series = historySeries.map((s: any) => ({
-      name: s.name,
-      type: 'line',
-      smooth: true,
-      data: s.values || []
-    }))
-  }
-  if (Array.isArray(data.class_list)) {
-    classTableData.value = data.class_list
-  }
+  kpi.value = res.data.kpi
+  classList.value = res.data.class_list || []
+  applyCharts(res.data)
 }
 
-onMounted(() => {
-  loadData()
-})
+const loadBatchOptions = async () => {
+  const batchRes = await getFitnessBatchOptionsApi({ stage_type: stageType.value }).catch(() => null)
+  batchOptions.value = batchRes?.data || []
+}
 
-watch(stageTab, () => {
-  loadData()
+const loadSchoolOptions = async () => {
+  const schoolRes = await getSchoolOptionsApi({ stage_type: stageType.value }).catch(() => null)
+  schoolOptions.value = (schoolRes?.data || []).map((i: any) => ({ label: i.label, value: i.school_name || i.value }))
+}
+
+const buildDefaultParams = async () => {
+  const params: Record<string, any> = { grade_name: null }
+  if (batchOptions.value.length) params.batch_id = batchOptions.value[0].value
+  if (schoolOptions.value.length) {
+    params.school_name = schoolOptions.value[0].value
+    const gradeRes = await getGradeOptionsApi({ school_name: params.school_name }).catch(() => null)
+    gradeOptions.value = (gradeRes?.data || []).map((i: any) => ({ label: i.label, value: i.grade_name || i.value }))
+  }
+  return params
+}
+
+const syncSearchValues = async (params: Record<string, any>) => {
+  await nextTick()
+  await searchRef.value?.setValues(params)
+}
+
+const onTabChange = async () => {
+  lastParams.value = {}
+  gradeOptions.value = []
+  await Promise.all([loadBatchOptions(), loadSchoolOptions()])
+  const params = await buildDefaultParams()
+  await syncSearchValues(params)
+  await loadData(params)
+}
+
+onMounted(async () => {
+  await Promise.all([loadBatchOptions(), loadSchoolOptions()])
+  const params = await buildDefaultParams()
+  await syncSearchValues(params)
+  await loadData(params)
 })
 </script>
 
 <template>
   <ContentWrap>
-    <ElTabs v-model="stageTab" class="mb-10px">
+    <ElTabs v-model="stageType" class="mb-10px" @tab-change="onTabChange">
+      <ElTabPane label="小学" name="primary" />
       <ElTabPane label="初中" name="mid" />
       <ElTabPane label="高中" name="high" />
+      <ElTabPane label="大学" name="university" />
     </ElTabs>
 
-    <Search
-      :schema="searchSchema"
-      @search="setSearchParams"
-      @reset="setSearchParams"
-      class="mb-10px"
-    />
+    <Search ref="searchRef" :schema="searchSchema" class="mb-12px" @search="loadData" @reset="loadData" />
 
-    <ElCard shadow="never" class="main-card">
-      <template #header>{{ panelTitle }}</template>
-      <ElRow :gutter="20" class="mb-20px">
-        <ElCol :span="4">
-          <ElCard shadow="hover" class="text-center">
-            <div class="text-gray-400 text-14px mb-10px">班级数</div>
-            <div class="text-24px font-bold text-blue-500">{{ kpiData.class_count }}</div>
-          </ElCard>
-        </ElCol>
-        <ElCol :span="4">
-          <ElCard shadow="hover" class="text-center">
-            <div class="text-gray-400 text-14px mb-10px">学生人数</div>
-            <div class="text-24px font-bold">{{ kpiData.student_count }}</div>
-          </ElCard>
-        </ElCol>
-        <ElCol :span="4">
-          <ElCard shadow="hover" class="text-center">
-            <div class="text-gray-400 text-14px mb-10px">单项记录数</div>
-            <div class="text-24px font-bold">{{ kpiData.item_records }}</div>
-          </ElCard>
-        </ElCol>
-        <ElCol :span="4">
-          <ElCard shadow="hover" class="text-center">
-            <div class="text-gray-400 text-14px mb-10px">不及格单项记录</div>
-            <div class="text-24px font-bold text-fail-red">{{ kpiData.fail_item_records }}</div>
-          </ElCard>
-        </ElCol>
-        <ElCol :span="4">
-          <ElCard shadow="hover" class="text-center">
-            <div class="text-gray-400 text-14px mb-10px">满分单项记录</div>
-            <div class="text-24px font-bold text-full-black">{{ kpiData.full_item_records }}</div>
-          </ElCard>
-        </ElCol>
-      </ElRow>
+    <ElCard shadow="never" class="analysis-card">
+      <div class="card-title">{{ titleText }}</div>
 
-      <ElRow :gutter="20" class="mb-20px">
-        <ElCol :span="12">
-          <ElCard shadow="never" title="各班单项均分对比">
-            <Echart :options="classItemAvgOptions" height="330px" />
-          </ElCard>
-        </ElCol>
-        <ElCol :span="12">
-          <ElCard shadow="never" title="各班单项率对比(50米)">
-            <Echart :options="classItemRateOptions" height="330px" />
-          </ElCard>
-        </ElCol>
-      </ElRow>
+      <div v-if="!kpi" class="py-30px"><ElEmpty description="请选择年级并查询" /></div>
 
-      <ElRow :gutter="20" class="mb-20px">
-        <ElCol :span="24">
-          <ElCard shadow="never" title="各班批次单项均分趋势(肺活量)">
-            <Echart :options="classHistoryItemTrendOptions" height="320px" />
-          </ElCard>
-        </ElCol>
-      </ElRow>
+      <template v-else>
+        <ElRow :gutter="12" class="mb-14px">
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6"><ElCard shadow="hover"><ElStatistic title="班级数" :value="kpi.class_count || 0" /></ElCard></ElCol>
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6"><ElCard shadow="hover"><ElStatistic title="学生人数" :value="kpi.student_count || 0" /></ElCard></ElCol>
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6"><ElCard shadow="hover"><ElStatistic title="单项记录数" :value="kpi.item_records || 0" /></ElCard></ElCol>
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6"><ElCard shadow="hover" class="kpi-fail"><ElStatistic title="不及格单项记录" :value="kpi.fail_item_records || 0" /></ElCard></ElCol>
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6"><ElCard shadow="hover" class="kpi-full"><ElStatistic title="满分单项记录" :value="kpi.full_item_records || 0" /></ElCard></ElCol>
+        </ElRow>
 
-      <div class="mb-8px text-15px font-600">班级体测统计列表</div>
-      <Table :columns="tableColumns" :data="classTableData" :pagination="false" :border="false" />
+        <ElRow :gutter="14" class="mb-14px">
+          <ElCol :span="12"><Echart :options="classItemAvgOptions" height="320px" /></ElCol>
+          <ElCol :span="12"><Echart :options="classItemRateOptions" height="320px" /></ElCol>
+        </ElRow>
 
-      <div class="text-12px text-gray-500 mt-8px">当前筛选：{{ searchParams }}</div>
+        <Echart :options="classHistoryOptions" height="300px" class="mb-14px" />
+
+        <ElTable :data="classList" stripe>
+          <ElTableColumn prop="class_name" label="班级" min-width="120" />
+          <ElTableColumn label="BMI" min-width="150" align="center">
+            <template #default="{ row }"><div>{{ row.bmi_score }}</div><div class="sub-cell">{{ row.bmi_point }}分 / {{ row.bmi_rate }}</div></template>
+          </ElTableColumn>
+          <ElTableColumn label="肺活量" min-width="150" align="center">
+            <template #default="{ row }"><div>{{ row.lung_score }}</div><div class="sub-cell">{{ row.lung_point }}分 / {{ row.lung_rate }}</div></template>
+          </ElTableColumn>
+          <ElTableColumn label="50米" min-width="150" align="center">
+            <template #default="{ row }"><div>{{ row.sprint_score }}</div><div class="sub-cell">{{ row.sprint_point }}分 / {{ row.sprint_rate }}</div></template>
+          </ElTableColumn>
+        </ElTable>
+      </template>
     </ElCard>
   </ContentWrap>
 </template>
 
-<style scoped lang="less">
-:deep(.el-card__header) {
-  text-align: center;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-:deep(.main-card > .el-card__header) {
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.text-pass-yellow {
-  color: #e6a23c;
-}
-
-.text-fail-red {
-  color: #f56c6c;
-}
-
-.text-excellent-green {
-  color: #67c23a;
-}
-
-.text-full-black {
-  color: #000000;
-}
-
-.text-blue-500 {
-  color: #409eff;
-}
+<style scoped>
+.analysis-card { border-radius: 10px; }
+.card-title { text-align: center; font-size: 22px; font-weight: 700; margin-bottom: 16px; }
+.sub-cell { color: #909399; font-size: 12px; }
+.analysis-card :deep(.el-statistic__head) { font-size: 14px; color: #606266; font-weight: 500; }
+.kpi-pass :deep(.el-statistic__content-value), .kpi-pass :deep(.el-statistic__content), .kpi-pass-text { color: #E6A23C !important; }
+.kpi-fail :deep(.el-statistic__content-value), .kpi-fail :deep(.el-statistic__content), .kpi-fail-text { color: #F56C6C !important; }
+.kpi-excellent :deep(.el-statistic__content-value), .kpi-excellent :deep(.el-statistic__content), .kpi-excellent-text { color: #67C23A !important; }
+.kpi-full :deep(.el-statistic__content-value), .kpi-full :deep(.el-statistic__content), .kpi-full-text { color: #000000 !important; }
 </style>
+

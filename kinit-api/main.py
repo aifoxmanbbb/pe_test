@@ -38,7 +38,7 @@ def create_app():
     openapi_url：配置接口文件json数据文件路由地址，如果禁用则为None，默认为/openapi.json
     """
     app = FastAPI(
-        title="Kinit",
+        title="体育测试",
         description="本项目基于Fastapi与Vue3+Typescript+Vite4+element-plus的基础项目 前端基于vue-element-plus-admin框架开发",
         version=settings.VERSION,
         lifespan=lifespan,

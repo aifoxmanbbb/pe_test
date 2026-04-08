@@ -54,20 +54,6 @@ export default defineComponent({
           </div>
         ) : undefined}
         <div class="h-full flex items-center">
-          <SettingV2 class="custom-hover" color="var(--top-header-text-color)"></SettingV2>
-          {screenfull.value ? (
-            <Screenfull class="custom-hover" color="var(--top-header-text-color)"></Screenfull>
-          ) : undefined}
-          {size.value ? (
-            <SizeDropdown class="custom-hover" color="var(--top-header-text-color)"></SizeDropdown>
-          ) : undefined}
-          {locale.value ? (
-            <LocaleDropdown
-              class="custom-hover"
-              color="var(--top-header-text-color)"
-            ></LocaleDropdown>
-          ) : undefined}
-
           <UserInfo></UserInfo>
         </div>
       </div>

@@ -28,8 +28,8 @@ export const getPeStandardListApi = (params?: Record<string, any>): Promise<IRes
   return request.get({ url: '/vadmin/pe/standard/list', params })
 }
 
-export const getPeBatchOptionsApi = (): Promise<IResponse<any>> => {
-  return request.get({ url: '/vadmin/pe/batch/options' })
+export const getPeBatchOptionsApi = (params?: Record<string, any>): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/pe/batch/options', params })
 }
 
 export const createPeBatchApi = (data: Record<string, any>): Promise<IResponse<any>> => {
@@ -58,4 +58,43 @@ export const deletePeBatchApi = (id: number): Promise<IResponse<any>> => {
 
 export const getPeStudentOptionsApi = (params?: Record<string, any>): Promise<IResponse<any>> => {
   return request.get({ url: '/vadmin/pe/students/options', params })
+}
+
+export const exportPeReportApi = (params: Record<string, any>): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/pe/report/export', params })
+}
+
+export const importPeStandardApi = (data: FormData): Promise<IResponse<any>> => {
+  return request.post({
+    url: '/vadmin/pe/standard/import',
+    data,
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
+export const confirmPeStandardApi = (data: Record<string, any>): Promise<IResponse<any>> => {
+  return request.post({ url: '/vadmin/pe/standard/confirm', data })
+}
+
+export const importPeScoresApi = (data: FormData): Promise<IResponse<any>> => {
+  return request.post({
+    url: '/vadmin/pe/score/import',
+    data,
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
+export const confirmPeScoresApi = (data: Record<string, any>): Promise<IResponse<any>> => {
+  return request.post({ url: '/vadmin/pe/score/confirm', data })
+}
+
+export const getPeBatchItemScoresApi = (params: {
+  batch_id: number
+  item_code: string
+}): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/pe/score/batch/students', params })
+}
+
+export const downloadPeScoreTemplateApi = (): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/pe/score/template' })
 }

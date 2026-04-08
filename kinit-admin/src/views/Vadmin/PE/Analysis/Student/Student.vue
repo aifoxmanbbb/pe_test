@@ -1,530 +1,403 @@
-﻿<script setup lang="tsx">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+﻿<script setup lang="ts">
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import type { FormSchema } from '@/components/Form'
 import { ContentWrap } from '@/components/ContentWrap'
 import { Search } from '@/components/Search'
-import { FormSchema } from '@/components/Form'
-import {
-  ElRow,
-  ElCol,
-  ElCard,
-  ElTag,
-  ElTabs,
-  ElTabPane,
-  ElDescriptions,
-  ElDescriptionsItem
-} from 'element-plus'
+import type { SearchExpose } from '@/components/Search'
 import { Echart } from '@/components/Echart'
-import { Table, TableColumn } from '@/components/Table'
-import { Icon } from '@/components/Icon'
+import {
+  ElCard,
+  ElCol,
+  ElDescriptions,
+  ElDescriptionsItem,
+  ElEmpty,
+  ElRow,
+  ElStatistic,
+  ElTable,
+  ElTableColumn,
+  ElTabs,
+  ElTabPane
+} from 'element-plus'
 import { BaseButton } from '@/components/Button'
-import { getPeStudentAnalysisApi } from '@/api/vadmin/pe'
+import { getPeStudentAnalysisApi, getPeStudentOptionsApi } from '@/api/vadmin/pe'
+import { getClassOptionsApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/api/vadmin/sport'
 
-defineOptions({
-  name: 'StudentAnalysis'
-})
+defineOptions({ name: 'PEStudentAnalysis' })
 
-const examTypeTab = ref('mid')
+const stageType = ref<'mid' | 'high'>('mid')
+const lastParams = ref<Record<string, any>>({})
+const searchRef = ref<SearchExpose>()
 
-const searchSchema = reactive<FormSchema[]>([
+const schoolOptions = ref<any[]>([])
+const gradeOptions = ref<any[]>([])
+const classOptions = ref<any[]>([])
+const studentOptions = ref<any[]>([])
+
+const profile = ref<any>(null)
+const stats = ref<any>(null)
+const detailList = ref<any[]>([])
+
+const searchSchema = computed<FormSchema[]>(() => [
   {
-    field: 'school_id',
+    field: 'school_name',
     label: '学校',
     component: 'Select',
     componentProps: {
-      placeholder: '请选择学校',
-      options: [
-        { label: '第一中学', value: 1 },
-        { label: '实验中学', value: 2 }
-      ]
+      options: schoolOptions.value,
+      filterable: true,
+      clearable: true,
+      onChange: async (val: string) => {
+        gradeOptions.value = []
+        classOptions.value = []
+        if (!val) return
+        const res = await getGradeOptionsApi({ school_name: val }).catch(() => null)
+        gradeOptions.value = (res?.data || []).map((i: any) => ({ label: i.label, value: i.grade_name || i.value }))
+      }
     }
   },
   {
-    field: 'grade_id',
+    field: 'grade_name',
     label: '年级',
     component: 'Select',
     componentProps: {
-      placeholder: '请选择年级',
-      options: [
-        { label: '初三', value: 3 },
-        { label: '高三', value: 6 }
-      ]
+      options: gradeOptions.value,
+      clearable: true,
+      onChange: async (val: string) => {
+        classOptions.value = []
+        if (!val) return
+        const res = await getClassOptionsApi({ grade_name: val }).catch(() => null)
+        classOptions.value = (res?.data || []).map((i: any) => ({ label: i.label, value: i.class_name || i.value }))
+      }
     }
   },
+  { field: 'class_name', label: '班级', component: 'Select', componentProps: { options: classOptions.value, clearable: true } },
   {
-    field: 'class_id',
-    label: '班级',
-    component: 'Select',
-    componentProps: {
-      placeholder: '请选择班级',
-      options: [
-        { label: '3年1班', value: 1 },
-        { label: '3年2班', value: 2 }
-      ]
-    }
-  },
-  {
-    field: 'student_id',
+    field: 'student_no',
     label: '学生',
     component: 'Select',
+    required: true,
     componentProps: {
-      placeholder: '请输入姓名/学号/联系方式搜索学生',
+      options: studentOptions.value,
       filterable: true,
-      clearable: true,
-      options: [
-        { label: '张三', value: 1 },
-        { label: '李四', value: 2 }
-      ]
+      clearable: true
     }
   }
 ])
 
-const searchParams = ref<Record<string, any>>({})
-const setSearchParams = (data: Record<string, any>) => {
-  searchParams.value = data
-  loadData()
-}
-
-const profileData = ref({
-  student_name: '张三',
-  gender: '男',
-  mobile: '13800001111',
-  school: '第一中学',
-  enrollment_year: 2023,
-  grade: '初三',
-  class_name: '3年1班',
-  student_no: '2023030101',
-  exam_type: '初中'
+const titleText = computed(() => {
+  if (!profile.value) return '某学校-学号-学生 体育项目情况分析'
+  return `${profile.value.school || '-'}-${profile.value.student_no || '-'}-${profile.value.student_name || '-'} 体育项目情况分析`
 })
 
-const panelTitle = computed(() => {
-  return `${profileData.value.school}-${profileData.value.student_no}-${profileData.value.student_name} 体育项目情况分析`
+const comprehensiveScore = computed(() => Number(stats.value?.latest_total || 0))
+const comprehensiveTotal = computed(() => {
+  const fullLine = totalTrendOptions.series?.[3]?.data || []
+  for (let i = fullLine.length - 1; i >= 0; i--) {
+    const v = Number(fullLine[i] || 0)
+    if (v > 0) return v
+  }
+  return 100
+})
+const comprehensiveScoreClass = computed(() => {
+  const v = Number(comprehensiveScore.value || 0)
+  const passLine = Number(totalTrendOptions.series[1].data?.slice(-1)?.[0] || 0)
+  const excellentLine = Number(totalTrendOptions.series[2].data?.slice(-1)?.[0] || 0)
+  const fullLine = Number(totalTrendOptions.series[3].data?.slice(-1)?.[0] || 0)
+  if (fullLine > 0 && v >= fullLine) return 'kpi-full-text'
+  if (excellentLine > 0 && v >= excellentLine) return 'kpi-excellent-text'
+  if (passLine > 0 && v >= passLine) return 'kpi-pass-text'
+  return 'kpi-fail-text'
 })
 
-const statsData = ref({
-  latest_total: 44,
-  history_max_total: 47,
-  pass_items: 3,
-  fail_items: 1,
-  excellent_item_count: 2,
-  full_item_count: 1,
-  excellent_items: '跳绳、立定跳远',
-  full_items: '1分钟跳绳'
-})
-
-const totalTrendOptions = reactive({
-  title: { text: '总分变化趋势', textStyle: { fontSize: 15, fontWeight: 'normal' } },
+const totalTrendOptions = reactive<any>({
+  title: { text: '总分趋势', left: 'center', textStyle: { fontSize: 14, fontWeight: 600 } },
   tooltip: { trigger: 'axis' },
-  legend: { data: ['总分', '及格线', '优秀线', '满分线'] },
-  xAxis: { type: 'category', data: ['2025春', '2025秋', '2026春'] },
-  yAxis: { type: 'value', max: 50 },
+  legend: { bottom: 0 },
+  grid: { left: 25, right: 20, top: 45, bottom: 50, containLabel: true },
+  xAxis: { type: 'category', data: [] },
+  yAxis: { type: 'value', name: '总分' },
   series: [
-    {
-      name: '总分',
-      type: 'line',
-      smooth: true,
-      data: [39, 42, 44],
-      itemStyle: { color: '#409eff' }
-    },
-    {
-      name: '及格线',
-      type: 'line',
-      symbol: 'none',
-      lineStyle: { type: 'dashed', color: '#E6A23C' },
-      data: [30, 30, 30]
-    },
-    {
-      name: '优秀线',
-      type: 'line',
-      symbol: 'none',
-      lineStyle: { type: 'dashed', color: '#67C23A' },
-      data: [40, 40, 40]
-    },
-    {
-      name: '满分线',
-      type: 'line',
-      symbol: 'none',
-      lineStyle: { type: 'dashed', color: '#000000' },
-      data: [50, 50, 50]
-    }
+    { name: '总分', type: 'line', smooth: true, data: [], itemStyle: { color: '#409EFF' }, label: { show: true, position: 'top' } },
+    { name: '及格线', type: 'line', smooth: true, data: [], lineStyle: { color: '#E6A23C', type: 'dashed' } },
+    { name: '优秀线', type: 'line', smooth: true, data: [], lineStyle: { color: '#67C23A', type: 'dashed' } },
+    { name: '满分线', type: 'line', smooth: true, data: [], lineStyle: { color: '#000000', type: 'dashed' } }
   ]
 })
 
-const itemTrendOptions = reactive({
-  title: { text: '各项目变化趋势', textStyle: { fontSize: 15, fontWeight: 'normal' } },
+const itemTrendOptions = reactive<any>({
+  title: { text: '项目变化趋势', left: 'center', textStyle: { fontSize: 14, fontWeight: 600 } },
   tooltip: { trigger: 'axis' },
-  legend: { data: ['跳绳', '跳远', '实心球'] },
-  xAxis: { type: 'category', data: ['2025春', '2025秋', '2026春'] },
-  yAxis: { type: 'value', max: 20 },
-  series: [
-    {
-      name: '跳绳',
-      type: 'bar',
-      data: [16, 18, 18],
-      itemStyle: { color: '#67C23A' },
-      label: { show: true, position: 'top', formatter: '{c}分' }
-    },
-    {
-      name: '跳远',
-      type: 'bar',
-      data: [9, 10, 11],
-      itemStyle: { color: '#E6A23C' },
-      label: { show: true, position: 'top', formatter: '{c}分' }
-    },
-    {
-      name: '实心球',
-      type: 'bar',
-      data: [8, 10, 11],
-      itemStyle: { color: '#F56C6C' },
-      label: { show: true, position: 'top', formatter: '{c}分' }
-    }
-  ]
+  legend: { bottom: 0 },
+  grid: { left: 25, right: 20, top: 45, bottom: 50, containLabel: true },
+  xAxis: { type: 'category', data: [] },
+  yAxis: { type: 'value', name: '分值' },
+  series: []
 })
 
-const scoreTextClass = (score: number, passLine: number, excellentLine: number) => {
-  if (score < passLine) return 'text-fail-red'
-  if (score < excellentLine) return 'text-pass-yellow'
-  return 'text-excellent-green'
+const loadStudentOptions = async (params: Record<string, any> = {}) => {
+  const res = await getPeStudentOptionsApi({ ...params, stage_type: stageType.value }).catch(() => null)
+  studentOptions.value = res?.data || []
 }
 
-const renderScorePoint = (
-  score: string,
-  point: number,
-  passLine: number,
-  excellentLine: number
-) => {
-  const cls = scoreTextClass(point, passLine, excellentLine)
-  return (
-    <div class="leading-5">
-      <div>{score}</div>
-      <div class={['text-12px', cls]}>{point}分</div>
-    </div>
-  )
+const applyCharts = (data: any) => {
+  const total = data?.total_trend || {}
+  totalTrendOptions.xAxis.data = total.batches || []
+  totalTrendOptions.series[0].data = total.total || []
+  totalTrendOptions.series[1].data = total.pass_line || []
+  totalTrendOptions.series[2].data = total.excellent_line || []
+  totalTrendOptions.series[3].data = total.full_line || []
+
+  const itemTrend = data?.item_trend || {}
+  itemTrendOptions.xAxis.data = itemTrend.batches || []
+  itemTrendOptions.series = (itemTrend.series || []).map((s: any, idx: number) => ({
+    name: s.name,
+    type: 'bar',
+    data: s.values || [],
+    label: { show: true, position: 'top' },
+    itemStyle: { color: ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#000000'][idx % 5] }
+  }))
 }
 
-const tableColumns = reactive<TableColumn[]>([
-  { field: 'batch_name', label: '批次', width: '130px' },
-  {
-    field: 'gate_item',
-    label: '门槛项(成绩/分)',
-    minWidth: '130px',
-    slots: {
-      default: (data: any) => renderScorePoint(data.row.gate_score, data.row.gate_point, 10, 14)
-    }
-  },
-  {
-    field: 'rope_item',
-    label: '跳绳(成绩/分)',
-    minWidth: '120px',
-    slots: {
-      default: (data: any) => renderScorePoint(data.row.rope_score, data.row.rope_point, 14, 18)
-    }
-  },
-  {
-    field: 'jump_item',
-    label: '跳远(成绩/分)',
-    minWidth: '120px',
-    slots: {
-      default: (data: any) => renderScorePoint(data.row.jump_score, data.row.jump_point, 10, 13)
-    }
-  },
-  {
-    field: 'ball_item',
-    label: '实心球(成绩/分)',
-    minWidth: '130px',
-    slots: {
-      default: (data: any) => renderScorePoint(data.row.ball_score, data.row.ball_point, 10, 13)
-    }
-  },
-  { field: 'total_score', label: '总分', width: '80px' },
-  {
-    field: 'pass_state',
-    label: '及格状态',
-    width: '90px',
-    slots: {
-      default: (data: any) => {
-        if (!data.row.pass_state) {
-          return <ElTag type="danger">不及格</ElTag>
-        }
-        return (
-          <ElTag style={{ backgroundColor: '#e6a23c', borderColor: '#e6a23c', color: '#fff' }}>
-            及格
-          </ElTag>
-        )
-      }
-    }
-  },
-  {
-    field: 'excellent_state',
-    label: '优秀状态',
-    width: '90px',
-    slots: {
-      default: (data: any) => {
-        if (!data.row.excellent_state) {
-          return <ElTag type="info">未优秀</ElTag>
-        }
-        return (
-          <ElTag style={{ backgroundColor: '#67c23a', borderColor: '#67c23a', color: '#fff' }}>
-            优秀
-          </ElTag>
-        )
-      }
-    }
-  },
-  { field: 'teacher_comment', label: '老师评语', minWidth: '170px' }
-])
+const loadData = async (params: Record<string, any> = lastParams.value) => {
+  const query = { ...params, stage_type: stageType.value }
+  lastParams.value = { ...params }
 
-const detailList = ref([
-  {
-    batch_name: '2026春季体考',
-    gate_score: '3分52秒',
-    gate_point: 12,
-    rope_score: '180次',
-    rope_point: 18,
-    jump_score: '2.30m',
-    jump_point: 11,
-    ball_score: '8.8m',
-    ball_point: 11,
-    total_score: 44,
-    pass_state: true,
-    excellent_state: true,
-    teacher_comment: '门槛项和跳绳保持稳定，跳远可继续提升。'
-  },
-  {
-    batch_name: '2025秋季体考',
-    gate_score: '3分58秒',
-    gate_point: 11,
-    rope_score: '176次',
-    rope_point: 17,
-    jump_score: '2.26m',
-    jump_point: 10,
-    ball_score: '8.2m',
-    ball_point: 10,
-    total_score: 42,
-    pass_state: true,
-    excellent_state: false,
-    teacher_comment: '整体稳定，实心球出手动作需要纠正。'
-  },
-  {
-    batch_name: '2025春季体考',
-    gate_score: '4分14秒',
-    gate_point: 8,
-    rope_score: '170次',
-    rope_point: 16,
-    jump_score: '2.21m',
-    jump_point: 9,
-    ball_score: '7.9m',
-    ball_point: 8,
-    total_score: 39,
-    pass_state: false,
-    excellent_state: false,
-    teacher_comment: '门槛项配速不足，需先强化耐力训练。'
+  const res = await getPeStudentAnalysisApi(query).catch(() => null)
+  if (!res?.data?.profile) {
+    profile.value = null
+    stats.value = null
+    detailList.value = []
+    return
   }
-])
 
-const handleExport = () => {
-  // 导出图表占位
+  profile.value = res.data.profile
+  stats.value = res.data.stats || {}
+  detailList.value = res.data.detail_list || []
+  applyCharts(res.data)
 }
 
-const loadData = async () => {
-  const res = await getPeStudentAnalysisApi({
-    ...searchParams.value,
-    stage_type: examTypeTab.value
-  }).catch(() => null)
-  if (!res) return
-  const data = res.data || {}
-  if (data.profile) {
-    profileData.value = Object.assign(profileData.value, data.profile)
-  }
-  if (data.stats) {
-    statsData.value = Object.assign(statsData.value, data.stats)
-  }
-  if (data.total_trend) {
-    totalTrendOptions.xAxis.data = data.total_trend.batches || []
-    totalTrendOptions.series[0].data = data.total_trend.total || []
-    totalTrendOptions.series[1].data = data.total_trend.pass_line || []
-    totalTrendOptions.series[2].data = data.total_trend.excellent_line || []
-    totalTrendOptions.series[3].data = data.total_trend.full_line || []
-  }
-  if (data.item_trend) {
-    itemTrendOptions.xAxis.data = data.item_trend.batches || []
-    const itemSeries = data.item_trend.series || []
-    const colors = ['#67C23A', '#E6A23C', '#F56C6C', '#409EFF']
-    itemTrendOptions.legend.data = itemSeries.map((s: any) => s.name)
-    itemTrendOptions.series = itemSeries.map((s: any, idx: number) => ({
-      name: s.name,
-      type: 'bar',
-      data: s.values || [],
-      itemStyle: { color: colors[idx % colors.length] },
-      label: { show: true, position: 'top', formatter: '{c}分' }
-    }))
-  }
-  if (Array.isArray(data.detail_list)) {
-    detailList.value = data.detail_list
-  }
+const onTabChange = async () => {
+  lastParams.value = {}
+  gradeOptions.value = []
+  classOptions.value = []
+  await initDefaultQuery()
 }
 
-onMounted(() => {
-  loadData()
-})
+const exportChart = () => {
+  ElMessage.success('图表导出能力将在下一步对接文件下载。')
+}
 
-watch(examTypeTab, () => {
-  loadData()
+const syncSearchValues = async (params: Record<string, any>) => {
+  await nextTick()
+  await searchRef.value?.setValues(params)
+}
+
+const initDefaultQuery = async () => {
+  const schoolRes = await getSchoolOptionsApi({ stage_type: stageType.value }).catch(() => null)
+  schoolOptions.value = (schoolRes?.data || []).map((i: any) => ({ label: i.label, value: i.school_name || i.value }))
+
+  const params: Record<string, any> = { grade_name: null, class_name: null, student_no: null }
+  if (schoolOptions.value.length) {
+    params.school_name = schoolOptions.value[0].value
+    const gradeRes = await getGradeOptionsApi({ school_name: params.school_name }).catch(() => null)
+    gradeOptions.value = (gradeRes?.data || []).map((i: any) => ({ label: i.label, value: i.grade_name || i.value }))
+  }
+  await loadStudentOptions(params)
+  await syncSearchValues(params)
+  await loadData(params)
+}
+
+onMounted(async () => {
+  await initDefaultQuery()
 })
 </script>
 
 <template>
   <ContentWrap>
-    <ElTabs v-model="examTypeTab" class="mb-10px">
+    <ElTabs v-model="stageType" class="mb-10px" @tab-change="onTabChange">
       <ElTabPane label="初中" name="mid" />
       <ElTabPane label="高中" name="high" />
     </ElTabs>
 
-    <div class="flex justify-between items-center mb-10px">
+    <div class="flex items-start gap-10px mb-12px">
       <Search
+        ref="searchRef"
         :schema="searchSchema"
-        @search="setSearchParams"
-        @reset="setSearchParams"
-        class="flex-grow"
+        class="flex-1"
+        @search="(params) => { loadStudentOptions(params); loadData(params) }"
+        @reset="(params) => { loadStudentOptions(params); loadData(params) }"
       />
-      <div class="ml-10px">
-        <BaseButton type="primary" @click="handleExport">
-          <Icon icon="ant-design:bar-chart-outlined" class="mr-5px" /> 导出图表
-        </BaseButton>
-      </div>
+      <BaseButton type="primary" @click="exportChart">导出图表</BaseButton>
     </div>
 
-    <ElCard shadow="never" class="main-card">
-      <template #header>{{ panelTitle }}</template>
-      <ElDescriptions :column="3" border class="mb-20px">
-        <ElDescriptionsItem label="姓名">{{ profileData.student_name }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="性别">{{ profileData.gender }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="联系方式">{{ profileData.mobile }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="学校">{{ profileData.school }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="入学年">{{ profileData.enrollment_year }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="年级">{{ profileData.grade }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="班级">{{ profileData.class_name }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="学号">{{ profileData.student_no }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="考试类型">{{ profileData.exam_type }}</ElDescriptionsItem>
-      </ElDescriptions>
+    <ElCard shadow="never" class="analysis-card">
+      <div class="card-title">{{ titleText }}</div>
 
-      <ElRow :gutter="20" class="mb-20px">
-        <ElCol :span="6">
-          <ElCard shadow="hover">
-            <template #header>最新总分</template>
-            <div class="text-28px font-bold text-blue-500 text-center">{{
-              statsData.latest_total
-            }}</div>
-          </ElCard>
-        </ElCol>
-        <ElCol :span="6">
-          <ElCard shadow="hover">
-            <template #header>历史最高总分</template>
-            <div class="text-28px font-bold text-full-black text-center">
-              {{ statsData.history_max_total }}
-            </div>
-          </ElCard>
-        </ElCol>
-        <ElCol :span="6">
-          <ElCard shadow="hover">
-            <template #header>及格项目数</template>
-            <div class="text-28px font-bold text-pass-yellow text-center">{{
-              statsData.pass_items
-            }}</div>
-          </ElCard>
-        </ElCol>
-        <ElCol :span="6">
-          <ElCard shadow="hover">
-            <template #header>不及格项目数</template>
-            <div class="text-28px font-bold text-fail-red text-center">{{
-              statsData.fail_items
-            }}</div>
-          </ElCard>
-        </ElCol>
-      </ElRow>
+      <div v-if="!profile" class="py-30px"><ElEmpty description="请选择学生后查看阶段对比" /></div>
 
-      <ElRow :gutter="20" class="mb-20px">
-        <ElCol :span="6">
-          <ElCard shadow="hover">
-            <template #header>优秀项目数</template>
-            <div class="text-28px font-bold text-excellent-green text-center">
-              {{ statsData.excellent_item_count }}
-            </div>
-          </ElCard>
-        </ElCol>
-        <ElCol :span="6">
-          <ElCard shadow="hover">
-            <template #header>满分项目数</template>
-            <div class="text-28px font-bold text-full-black text-center">
-              {{ statsData.full_item_count }}
-            </div>
-          </ElCard>
-        </ElCol>
-        <ElCol :span="6">
-          <ElCard shadow="hover">
-            <template #header>优秀项目</template>
-            <div class="text-16px font-600 text-excellent-green text-center">
-              {{ statsData.excellent_items }}
-            </div>
-          </ElCard>
-        </ElCol>
-        <ElCol :span="6">
-          <ElCard shadow="hover">
-            <template #header>满分项目</template>
-            <div class="text-16px font-600 text-full-black text-center">
-              {{ statsData.full_items }}
-            </div>
-          </ElCard>
-        </ElCol>
-      </ElRow>
+      <template v-else>
+        <ElRow :gutter="12" class="mb-14px profile-row">
+          <ElCol :xs="24" :sm="24" :md="8" :lg="6" :xl="6" class="stretch-col">
+            <ElCard shadow="hover" class="text-center same-height-card score-card">
+              <div class="card-subtitle mb-6px">综合评分</div>
+              <div class="score-line">
+                <span class="text-30px font-700" :class="comprehensiveScoreClass">{{ comprehensiveScore }}</span>
+                <span class="score-total">/{{ comprehensiveTotal }}</span>
+              </div>
+            </ElCard>
+          </ElCol>
+          <ElCol :xs="24" :sm="24" :md="16" :lg="18" :xl="18" class="stretch-col">
+            <ElCard shadow="hover" class="profile-card same-height-card">
+              <ElDescriptions :column="4" border class="striped-desc">
+                <ElDescriptionsItem label="姓名">{{ profile.student_name }}</ElDescriptionsItem>
+                <ElDescriptionsItem label="性别">{{ profile.gender === 'male' ? '男' : '女' }}</ElDescriptionsItem>
+                <ElDescriptionsItem label="联系方式">{{ profile.mobile || '-' }}</ElDescriptionsItem>
+                <ElDescriptionsItem label="学校">{{ profile.school || '-' }}</ElDescriptionsItem>
+                <ElDescriptionsItem label="入学年">{{ profile.enrollment_year || '-' }}</ElDescriptionsItem>
+                <ElDescriptionsItem label="年级">{{ profile.grade || '-' }}</ElDescriptionsItem>
+                <ElDescriptionsItem label="班级">{{ profile.class_name || '-' }}</ElDescriptionsItem>
+                <ElDescriptionsItem label="学号">{{ profile.student_no || '-' }}</ElDescriptionsItem>
+                <ElDescriptionsItem label="学段">{{ profile.exam_type || '-' }}</ElDescriptionsItem>
+              </ElDescriptions>
+            </ElCard>
+          </ElCol>
+        </ElRow>
 
-      <ElRow :gutter="20" class="mb-20px">
-        <ElCol :span="12">
-          <ElCard shadow="never" title="总分变化趋势">
-            <Echart :options="totalTrendOptions" height="360px" />
-          </ElCard>
-        </ElCol>
-        <ElCol :span="12">
-          <ElCard shadow="never" title="各项目变化趋势（不及格红 / 及格黄 / 优秀绿）">
-            <Echart :options="itemTrendOptions" height="360px" />
-          </ElCard>
-        </ElCol>
-      </ElRow>
+        <ElRow :gutter="12" class="mb-14px">
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
+            <ElCard shadow="hover" class="stat-card">
+              <ElStatistic :value="stats.history_max_total || 0">
+                <template #title><span class="card-subtitle">历史最高总分</span></template>
+              </ElStatistic>
+            </ElCard>
+          </ElCol>
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
+            <ElCard shadow="hover" class="kpi-pass stat-card">
+              <ElStatistic :value="stats.pass_items || 0">
+                <template #title><span class="card-subtitle">及格项目数</span></template>
+              </ElStatistic>
+            </ElCard>
+          </ElCol>
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
+            <ElCard shadow="hover" class="kpi-fail stat-card">
+              <ElStatistic :value="stats.fail_items || 0">
+                <template #title><span class="card-subtitle">不及格项目数</span></template>
+              </ElStatistic>
+            </ElCard>
+          </ElCol>
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
+            <ElCard shadow="hover" class="kpi-excellent stat-card">
+              <ElStatistic :value="stats.excellent_item_count || 0">
+                <template #title><span class="card-subtitle">优秀项目数</span></template>
+              </ElStatistic>
+            </ElCard>
+          </ElCol>
+        </ElRow>
 
-      <div class="mb-8px text-15px font-600">批次成绩列表</div>
-      <Table :columns="tableColumns" :data="detailList" :pagination="false" :border="false" />
+        <ElRow :gutter="12" class="mb-14px">
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
+            <ElCard shadow="hover" class="kpi-full stat-card">
+              <ElStatistic :value="stats.full_item_count || 0">
+                <template #title><span class="card-subtitle">满分项目数</span></template>
+              </ElStatistic>
+            </ElCard>
+          </ElCol>
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
+            <ElCard shadow="hover" class="kpi-fail stat-card text-card">
+              <div class="card-subtitle mb-6px">不及格项目</div>
+              <div class="text-14px kpi-fail-text">{{ stats.fail_items_text || '-' }}</div>
+            </ElCard>
+          </ElCol>
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
+            <ElCard shadow="hover" class="kpi-excellent stat-card text-card">
+              <div class="card-subtitle mb-6px">优秀项目</div>
+              <div class="text-14px kpi-excellent-text">{{ stats.excellent_items || '-' }}</div>
+            </ElCard>
+          </ElCol>
+          <ElCol :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
+            <ElCard shadow="hover" class="kpi-full stat-card text-card">
+              <div class="card-subtitle mb-6px">满分项目</div>
+              <div class="text-14px kpi-full-text">{{ stats.full_items || '-' }}</div>
+            </ElCard>
+          </ElCol>
+        </ElRow>
+
+        <ElRow :gutter="14" class="mb-14px">
+          <ElCol :span="10"><Echart :options="totalTrendOptions" height="300px" /></ElCol>
+          <ElCol :span="14"><Echart :options="itemTrendOptions" height="300px" /></ElCol>
+        </ElRow>
+
+        <ElTable :data="detailList" stripe>
+          <ElTableColumn prop="batch_name" label="批次" min-width="160" />
+          <ElTableColumn label="门槛项" min-width="130" align="center">
+            <template #default="{ row }"><div>{{ row.gate_score }}</div><div class="sub-cell">{{ row.gate_point }}分</div></template>
+          </ElTableColumn>
+          <ElTableColumn label="跳绳" min-width="130" align="center">
+            <template #default="{ row }"><div>{{ row.rope_score }}</div><div class="sub-cell">{{ row.rope_point }}分</div></template>
+          </ElTableColumn>
+          <ElTableColumn label="跳远" min-width="130" align="center">
+            <template #default="{ row }"><div>{{ row.jump_score }}</div><div class="sub-cell">{{ row.jump_point }}分</div></template>
+          </ElTableColumn>
+          <ElTableColumn label="实心球" min-width="130" align="center">
+            <template #default="{ row }"><div>{{ row.ball_score }}</div><div class="sub-cell">{{ row.ball_point }}分</div></template>
+          </ElTableColumn>
+          <ElTableColumn prop="total_score" label="总分" min-width="90" align="center" />
+          <ElTableColumn label="及格" min-width="70" align="center">
+            <template #default="{ row }"><span :class="row.pass_state ? 'kpi-pass-text' : 'kpi-fail-text'">{{ row.pass_state ? '及格' : '不及格' }}</span></template>
+          </ElTableColumn>
+          <ElTableColumn label="优秀" min-width="70" align="center">
+            <template #default="{ row }"><span class="kpi-excellent-text">{{ row.excellent_state ? '优秀' : '-' }}</span></template>
+          </ElTableColumn>
+          <ElTableColumn prop="teacher_comment" label="老师评语" min-width="200" show-overflow-tooltip />
+        </ElTable>
+      </template>
     </ElCard>
   </ContentWrap>
 </template>
 
-<style scoped lang="less">
-:deep(.el-card__header) {
-  text-align: center;
-  font-size: 15px;
-  font-weight: 600;
+<style scoped>
+.analysis-card { border-radius: 10px; }
+.card-title { text-align: center; font-size: 22px; font-weight: 700; margin-bottom: 16px; }
+.card-subtitle { font-size: 14px; color: #606266; font-weight: 500; }
+.sub-cell { color: #909399; font-size: 12px; }
+.profile-row { align-items: stretch; }
+.stretch-col { display: flex; }
+.same-height-card { width: 100%; }
+.stat-card :deep(.el-card__body) {
+  min-height: 94px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
-
-:deep(.main-card > .el-card__header) {
-  font-size: 20px;
-  font-weight: 700;
+.text-card :deep(.el-card__body) { align-items: flex-start; }
+.score-card :deep(.el-card__body) {
+  min-height: 168px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
-
-.text-pass-yellow {
-  color: #e6a23c;
+.score-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
 }
-
-.text-fail-red {
-  color: #f56c6c;
-}
-
-.text-excellent-green {
-  color: #67c23a;
-}
-
-.text-full-black {
+.score-total {
+  font-size: 14px;
+  font-weight: 500;
   color: #000000;
 }
-
-.text-blue-500 {
-  color: #409eff;
-}
+.profile-card { height: 100%; }
+.striped-desc :deep(.el-descriptions__body .el-descriptions__table tr:nth-child(odd) td) { background: #f8fafc; }
+.kpi-pass :deep(.el-statistic__content-value), .kpi-pass :deep(.el-statistic__content) { color: #E6A23C !important; }
+.kpi-fail :deep(.el-statistic__content-value), .kpi-fail :deep(.el-statistic__content) { color: #F56C6C !important; }
+.kpi-excellent :deep(.el-statistic__content-value), .kpi-excellent :deep(.el-statistic__content) { color: #67C23A !important; }
+.kpi-full :deep(.el-statistic__content-value), .kpi-full :deep(.el-statistic__content) { color: #000000 !important; }
+.kpi-pass-text { color: #E6A23C; }
+.kpi-fail-text { color: #F56C6C; }
+.kpi-excellent-text { color: #67C23A; }
+.kpi-full-text { color: #000000; }
 </style>

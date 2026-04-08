@@ -10,3 +10,5 @@
 kinit-api/alembic.ini
 
 kinit-api/application/config/*.py
+
+.prod
