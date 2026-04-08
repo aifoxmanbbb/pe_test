@@ -14,7 +14,14 @@ from fastapi.security import OAuth2PasswordBearer
 VERSION = "3.10.1"
 
 """安全警告: 不要在生产中打开调试运行!"""
-DEBUG = True
+def _env_bool(name: str, default: bool = False) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return str(val).strip().lower() in {"1", "true", "yes", "on"}
+
+
+DEBUG = _env_bool("DEBUG", False)
 
 """是否开启演示功能：取消所有POST,DELETE,PUT操作权限"""
 DEMO = False
@@ -37,7 +44,10 @@ DEMO_BLACK_LIST_PATH = [
 引入数据库配置
 """
 if DEBUG:
-    from application.config.development import *
+    try:
+        from application.config.development import *
+    except ModuleNotFoundError:
+        from application.config.production import *
 else:
     from application.config.production import *
 

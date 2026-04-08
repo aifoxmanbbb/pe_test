@@ -107,5 +107,8 @@ jobs:
             export API_IMAGE="${{ steps.meta.outputs.api_image }}"
             export IMAGE_TAG="${{ steps.meta.outputs.sha_short }}"
 
+            echo "${{ env.TCR_PASSWORD }}" | docker login "${{ env.TCR_REGISTRY }}" \
+              --username "${{ env.TCR_USERNAME }}" --password-stdin
+
             docker compose --env-file .env -f docker-compose.yml pull
             docker compose --env-file .env -f docker-compose.yml up -d --remove-orphans
