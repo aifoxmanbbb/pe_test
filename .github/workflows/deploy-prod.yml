@@ -64,7 +64,13 @@ jobs:
       - name: Build kinit-admin static files
         working-directory: kinit-admin
         run: |
-          npm ci
+          pwd
+          ls -la
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
           npm run build:pro
 
       - name: Upload kinit-admin static files
