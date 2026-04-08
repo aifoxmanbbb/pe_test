@@ -1,0 +1,4 @@
+**
+!kinit-api/**
+!docker_env/kinit-api/Dockerfile
+
