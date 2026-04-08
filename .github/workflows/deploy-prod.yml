@@ -10,6 +10,7 @@ jobs:
     permissions:
       contents: read
 
+    environment: Guangzhou
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
@@ -95,10 +96,3 @@ jobs:
 
             docker compose --env-file .env -f docker-compose.yml pull
             docker compose --env-file .env -f docker-compose.yml up -d --remove-orphans
-
-            # Option 3: keep upload path, map nginx root by symlink
-            mkdir -p /etc/nginx/conf.d/html
-            ln -sfn "${{ env.DEPLOY_PATH }}/kinit-admin-dist" /etc/nginx/conf.d/html/127.0.0.1
-            if command -v nginx >/dev/null 2>&1; then
-              nginx -t && (nginx -s reload || true)
-            fi
