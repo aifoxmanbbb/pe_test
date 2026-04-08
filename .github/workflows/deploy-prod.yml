@@ -55,6 +55,8 @@ jobs:
           context: .
           file: docker_env/kinit-api/Dockerfile
           push: true
+          provenance: false
+          sbom: false
           tags: |
             ${{ env.TCR_REGISTRY }}/${{ steps.meta.outputs.api_image }}:latest
             ${{ env.TCR_REGISTRY }}/${{ steps.meta.outputs.api_image }}:${{ steps.meta.outputs.sha_short }}
