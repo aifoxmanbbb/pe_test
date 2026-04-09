@@ -31,10 +31,11 @@ from utils.response import SuccessResponse, ErrorResponse
 from application import settings
 from .login_manage import LoginManage
 from .validation import LoginForm, WXLoginForm
+from .validation.login import has_login_permission
 from apps.vadmin.record.models import VadminLoginRecord
 from apps.vadmin.auth.crud import MenuDal, UserDal
 from apps.vadmin.auth.models import VadminUser
-from .current import FullAdminAuth
+from .current import AllUserAuth
 from .validation.auth import Auth
 from utils.wx.oauth import WXOAuth
 import jwt
@@ -57,7 +58,7 @@ async def api_login_for_access_token(
         raise CustomException(status_code=error_code, code=error_code, msg="手机号或密码错误")
     if not user.is_active:
         raise CustomException(status_code=error_code, code=error_code, msg="此手机号已被冻结")
-    elif not user.is_staff:
+    elif not await has_login_permission(db, user):
         raise CustomException(status_code=error_code, code=error_code, msg="此手机号无权限")
     access_token = LoginManage.create_token({"sub": user.telephone, "password": user.password})
     record = LoginForm(platform='2', method='0', telephone=data.username, password=data.password)
@@ -152,7 +153,7 @@ async def wx_login_for_access_token(
 
 
 @app.get("/getMenuList", summary="获取当前用户菜单树")
-async def get_menu_list(auth: Auth = Depends(FullAdminAuth())):
+async def get_menu_list(auth: Auth = Depends(AllUserAuth())):
     return SuccessResponse(await MenuDal(auth.db).get_routers(auth.user))
 
 

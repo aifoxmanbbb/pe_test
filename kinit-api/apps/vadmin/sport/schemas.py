@@ -4,6 +4,7 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional
+from core.data_types import Telephone
 
 class SchoolOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -55,6 +56,27 @@ class StudentOut(BaseModel):
     phone: Optional[str] = None
     is_active: bool
     create_datetime: datetime
+
+
+class StudentBase(BaseModel):
+    student_no: str
+    name: str
+    gender: str
+    school_id: int
+    grade_id: int
+    class_id: int
+    phone: Telephone
+    birthday: Optional[str] = None
+    is_active: bool = True
+    remark: Optional[str] = None
+
+
+class StudentIn(StudentBase):
+    pass
+
+
+class StudentUpdate(StudentBase):
+    pass
 
 class BatchOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

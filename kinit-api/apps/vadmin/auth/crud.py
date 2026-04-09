@@ -14,7 +14,7 @@ from sqlalchemy.orm import joinedload, aliased
 from sqlalchemy.orm.strategy_options import _AbstractLoad, contains_eager
 from core.exception import CustomException
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import select, false, and_
+from sqlalchemy import select, false, and_, func
 from core.crud import DalBase
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.validator import vali_telephone
@@ -582,16 +582,37 @@ class MenuDal(DalBase):
         :param user:
         :return:
         """
-        if any([i.is_admin for i in user.roles]):
+        admin_count = await self.db.scalar(
+            select(func.count())
+            .select_from(models.vadmin_auth_user_roles)
+            .join(models.VadminRole, models.VadminRole.id == models.vadmin_auth_user_roles.c.role_id)
+            .where(
+                models.vadmin_auth_user_roles.c.user_id == user.id,
+                models.VadminRole.is_admin == True,
+                models.VadminRole.is_delete == false()
+            )
+        )
+        if admin_count:
             sql = select(self.model) \
                 .where(self.model.disabled == 0, self.model.menu_type != "2", self.model.is_delete == false())
             queryset = await self.db.scalars(sql)
             datas = list(queryset.all())
         else:
-            options = [joinedload(models.VadminUser.roles).subqueryload(models.VadminRole.menus)]
-            user = await UserDal(self.db).get_data(user.id, v_options=options)
-            datas = set()
-            for role in user.roles:
+            sql = (
+                select(self.model)
+                .join(models.vadmin_auth_role_menus, self.model.id == models.vadmin_auth_role_menus.c.menu_id)
+                .join(models.vadmin_auth_user_roles, models.vadmin_auth_role_menus.c.role_id == models.vadmin_auth_user_roles.c.role_id)
+                .where(
+                    models.vadmin_auth_user_roles.c.user_id == user.id,
+                    self.model.disabled == 0,
+                    self.model.menu_type != "2",
+                    self.model.is_delete == false()
+                )
+                .distinct()
+            )
+            queryset = await self.db.scalars(sql)
+            datas = list(queryset.all())
+            for role in []:
                 for menu in role.menus:
                     # 该路由没有被禁用，并且菜单不是按钮
                     if not menu.disabled and menu.menu_type != "2":

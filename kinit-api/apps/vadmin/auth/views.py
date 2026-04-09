@@ -8,6 +8,7 @@
 
 from redis.asyncio import Redis
 from fastapi import APIRouter, Depends, Body, UploadFile, Request
+from sqlalchemy import select, false
 from sqlalchemy.orm import joinedload
 from core.database import redis_getter
 from utils.response import SuccessResponse, ErrorResponse
@@ -99,9 +100,28 @@ async def post_user_current_update_avatar(file: UploadFile, auth: Auth = Depends
 
 
 @app.get("/user/admin/current/info", summary="获取当前管理员信息")
-async def get_user_admin_current_info(auth: Auth = Depends(FullAdminAuth())):
-    result = schemas.UserOut.model_validate(auth.user).model_dump()
-    result["permissions"] = list(FullAdminAuth.get_user_permissions(auth.user))
+async def get_user_admin_current_info(auth: Auth = Depends(AllUserAuth())):
+    user = await crud.UserDal(auth.db).get_data(
+        data_id=auth.user.id,
+        v_options=[joinedload(models.VadminUser.roles), joinedload(models.VadminUser.depts)]
+    )
+    result = schemas.UserOut.model_validate(user).model_dump()
+    if any(role.is_admin for role in user.roles):
+        result["permissions"] = ["*.*.*"]
+    else:
+        permission_sql = (
+            select(models.VadminMenu.perms)
+            .join(models.vadmin_auth_role_menus, models.VadminMenu.id == models.vadmin_auth_role_menus.c.menu_id)
+            .join(models.vadmin_auth_user_roles, models.vadmin_auth_role_menus.c.role_id == models.vadmin_auth_user_roles.c.role_id)
+            .where(
+                models.vadmin_auth_user_roles.c.user_id == user.id,
+                models.VadminMenu.disabled == false(),
+                models.VadminMenu.is_delete == false(),
+                models.VadminMenu.perms.is_not(None)
+            )
+            .distinct()
+        )
+        result["permissions"] = [perm for perm in (await auth.db.scalars(permission_sql)).all() if perm]
     return SuccessResponse(result)
 
 

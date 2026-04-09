@@ -8,6 +8,7 @@
 
 from fastapi import Request
 from pydantic import BaseModel, field_validator
+from sqlalchemy import select, func, false
 from sqlalchemy.ext.asyncio import AsyncSession
 from application.settings import DEFAULT_AUTH_ERROR_MAX_NUMBER, DEMO, REDIS_DB_ENABLE
 from apps.vadmin.auth import crud, schemas
@@ -40,6 +41,22 @@ class LoginResult(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
+
+
+async def has_login_permission(db: AsyncSession, user) -> bool:
+    if user.is_staff:
+        return True
+    role_count = await db.scalar(
+        select(func.count())
+        .select_from(crud.models.vadmin_auth_user_roles)
+        .join(crud.models.VadminRole, crud.models.VadminRole.id == crud.models.vadmin_auth_user_roles.c.role_id)
+        .where(
+            crud.models.vadmin_auth_user_roles.c.user_id == user.id,
+            crud.models.VadminRole.disabled == false(),
+            crud.models.VadminRole.is_delete == false()
+        )
+    )
+    return bool(role_count)
 
 
 class LoginValidation:
@@ -80,7 +97,7 @@ class LoginValidation:
                     await db.flush()
         elif not user.is_active:
             self.result.msg = "此手机号已被冻结！"
-        elif data.platform in ["0", "1"] and not user.is_staff:
+        elif data.platform in ["0", "1"] and not await has_login_permission(db, user):
             self.result.msg = "此手机号无权限！"
         else:
             if not DEMO and count:

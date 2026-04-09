@@ -98,6 +98,30 @@ def _in_scope(auth: Auth, school_name: str | None, class_name: str | None) -> bo
     return any((tk in val) or (val in tk) for tk in tokens for val in values if val)
 
 
+async def _get_self_student_context(db, telephone: str | None) -> dict[str, Any] | None:
+    if not telephone:
+        return None
+    sql = (
+        select(VadminPefStudent, VadminPefSchool.school_name, VadminPefGrade.grade_name, VadminPefClass.class_name)
+        .select_from(VadminPefStudent)
+        .join(VadminPefSchool, VadminPefStudent.school_id == VadminPefSchool.id)
+        .join(VadminPefGrade, VadminPefStudent.grade_id == VadminPefGrade.id)
+        .join(VadminPefClass, VadminPefStudent.class_id == VadminPefClass.id)
+        .where(VadminPefStudent.is_delete == false(), VadminPefStudent.phone == telephone)
+        .order_by(VadminPefStudent.update_datetime.desc(), VadminPefStudent.id.desc())
+    )
+    row = (await db.execute(sql)).first()
+    if not row:
+        return None
+    student, school_name, grade_name, class_name = row
+    return {
+        'student': student,
+        'school_name': school_name,
+        'grade_name': grade_name,
+        'class_name': class_name
+    }
+
+
 def _stage_text(stage_type: str | None) -> str:
     stage_map = {
         'primary': '小学',
@@ -698,8 +722,27 @@ async def get_student_analysis(
 
 @app.get('/analysis/student/self', summary='体测学生本人视图')
 async def get_student_analysis_self(auth: Auth = Depends(AllUserAuth())):
-    own_student_no = getattr(auth.user, 'username', None) or getattr(auth.user, 'name', None)
-    return await get_student_analysis(stage_type=None, student_no=own_student_no, auth=auth)
+    ctx = await _get_self_student_context(auth.db, getattr(auth.user, 'telephone', None))
+    if not ctx:
+        return SuccessResponse(_empty_student())
+    resp = await get_student_analysis(
+        stage_type=None,
+        school_name=ctx['school_name'],
+        grade_name=ctx['grade_name'],
+        class_name=ctx['class_name'],
+        student_no=ctx['student'].student_no,
+        auth=auth
+    )
+    payload = getattr(resp, 'data', {}).get('data')
+    if isinstance(payload, dict) and isinstance(payload.get('profile'), dict):
+        payload['profile']['student_name'] = ctx['student'].name
+        payload['profile']['gender'] = ctx['student'].gender
+        payload['profile']['mobile'] = ctx['student'].phone
+        payload['profile']['school'] = ctx['school_name']
+        payload['profile']['grade'] = ctx['grade_name']
+        payload['profile']['class_name'] = ctx['class_name']
+        payload['profile']['student_no'] = ctx['student'].student_no
+    return resp
 
 
 @app.get('/analysis/class', summary='班级体测分析')
