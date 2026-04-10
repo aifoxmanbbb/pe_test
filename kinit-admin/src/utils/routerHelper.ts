@@ -9,6 +9,32 @@ import { isUrl } from '@/utils/is'
 import { omit, cloneDeep } from 'lodash-es'
 
 const modules = import.meta.glob('../views/**/*.{vue,tsx}')
+const fallbackView = modules['../views/Error/404.vue']
+
+const normalizeServerComponent = (component: string): string[] => {
+  const raw = (component || '').trim()
+  if (!raw) return []
+  const noExt = raw.replace(/\.(vue|tsx)$/i, '')
+  const variants = new Set<string>()
+  variants.add(noExt)
+  variants.add(noExt.replace(/^\/+/, ''))
+  variants.add(noExt.replace(/^@\//, ''))
+  variants.add(noExt.replace(/^\.\/+/, ''))
+  variants.add(noExt.replace(/^\.\.\/+/, ''))
+  variants.add(noExt.replace(/^\/?views\//, 'views/'))
+  return Array.from(variants).filter(Boolean)
+}
+
+const resolveServerViewModule = (component: string) => {
+  const candidates = normalizeServerComponent(component)
+  for (const c of candidates) {
+    const vueKey = `../${c}.vue`
+    const tsxKey = `../${c}.tsx`
+    if (modules[vueKey]) return modules[vueKey]
+    if (modules[tsxKey]) return modules[tsxKey]
+  }
+  return null
+}
 
 /* Layout */
 export const Layout = () => import('@/layout/Layout.vue')
@@ -103,14 +129,17 @@ export const generateRoutesByServer = (routes: AppCustomRouteRecordRaw[]): AppRo
       meta: route.meta
     }
     if (route.component) {
-      const comModule = modules[`../${route.component}.vue`] || modules[`../${route.component}.tsx`]
       const component = route.component as string
-      if (!comModule && !component.includes('#')) {
-        console.error(`未找到${route.component}.vue文件或${route.component}.tsx文件，请创建`)
+      const comModule = resolveServerViewModule(component)
+      if (component === '#') {
+        data.component = Layout
+      } else if (component.includes('##')) {
+        data.component = getParentLayout()
+      } else if (comModule) {
+        data.component = comModule
       } else {
-        // 动态加载路由文件，可根据实际情况进行自定义逻辑
-        data.component =
-          component === '#' ? Layout : component.includes('##') ? getParentLayout() : comModule
+        console.error(`未找到${route.component}对应视图，已回退到兜底组件`)
+        data.component = route.children?.length ? getParentLayout() : fallbackView
       }
     }
     // recursive child routes

@@ -80,8 +80,23 @@ async def _ensure_student_menu_role(db):
         )
         db.add(root_menu)
         await db.flush()
-    else:
-        root_menu.disabled = False
+    root_menu.title = '我的体育'
+    root_menu.icon = 'ant-design:user-outlined'
+    root_menu.redirect = '/sport/my-scores'
+    root_menu.component = '#'
+    root_menu.path = '/sport'
+    root_menu.disabled = False
+    root_menu.hidden = False
+    root_menu.order = 12
+    root_menu.menu_type = '0'
+    root_menu.parent_id = None
+    root_menu.perms = STUDENT_ROOT_PERM
+    root_menu.noCache = False
+    root_menu.breadcrumb = True
+    root_menu.affix = False
+    root_menu.noTagsView = False
+    root_menu.canTo = False
+    root_menu.alwaysShow = True
 
     score_menu = await db.scalar(select(VadminMenu).where(
         VadminMenu.perms == STUDENT_SCORE_PERM,
@@ -109,10 +124,23 @@ async def _ensure_student_menu_role(db):
         )
         db.add(score_menu)
         await db.flush()
-    else:
-        score_menu.disabled = False
-        if score_menu.parent_id != root_menu.id:
-            score_menu.parent_id = root_menu.id
+    score_menu.title = '我的成绩'
+    score_menu.icon = None
+    score_menu.redirect = None
+    score_menu.component = 'views/Vadmin/Sport/Student/MyScores'
+    score_menu.path = 'my-scores'
+    score_menu.disabled = False
+    score_menu.hidden = False
+    score_menu.order = 1
+    score_menu.menu_type = '1'
+    score_menu.parent_id = root_menu.id
+    score_menu.perms = STUDENT_SCORE_PERM
+    score_menu.noCache = False
+    score_menu.breadcrumb = True
+    score_menu.affix = False
+    score_menu.noTagsView = False
+    score_menu.canTo = False
+    score_menu.alwaysShow = False
 
     role = await db.scalar(select(VadminRole).where(
         VadminRole.role_key == STUDENT_ROLE_KEY,

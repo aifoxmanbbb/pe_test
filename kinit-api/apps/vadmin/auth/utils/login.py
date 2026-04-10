@@ -35,6 +35,7 @@ from .validation.login import has_login_permission
 from apps.vadmin.record.models import VadminLoginRecord
 from apps.vadmin.auth.crud import MenuDal, UserDal
 from apps.vadmin.auth.models import VadminUser
+from apps.vadmin.sport.views import _ensure_student_menu_role
 from .current import AllUserAuth
 from .validation.auth import Auth
 from utils.wx.oauth import WXOAuth
@@ -154,6 +155,8 @@ async def wx_login_for_access_token(
 
 @app.get("/getMenuList", summary="获取当前用户菜单树")
 async def get_menu_list(auth: Auth = Depends(AllUserAuth())):
+    if auth.user and not auth.user.is_staff:
+        await _ensure_student_menu_role(auth.db)
     return SuccessResponse(await MenuDal(auth.db).get_routers(auth.user))
 
 

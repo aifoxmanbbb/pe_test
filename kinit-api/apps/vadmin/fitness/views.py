@@ -3,6 +3,7 @@
 
 import json
 import re
+import logging
 from typing import Any
 from fastapi import APIRouter, Depends, Body, Query, File, UploadFile
 from sqlalchemy import select, false, true, func, or_
@@ -45,6 +46,7 @@ from utils.response import SuccessResponse, ErrorResponse
 from utils.excel.write_xlsx import WriteXlsx
 
 app = APIRouter()
+logger = logging.getLogger(__name__)
 
 def _serialize(model_obj, schema_class):
     """
@@ -98,20 +100,30 @@ def _in_scope(auth: Auth, school_name: str | None, class_name: str | None) -> bo
     return any((tk in val) or (val in tk) for tk in tokens for val in values if val)
 
 
-async def _get_self_student_context(db, telephone: str | None) -> dict[str, Any] | None:
-    if not telephone:
+async def _get_self_student_context(db, telephone: str | None, user_id: int | None = None) -> dict[str, Any] | None:
+    if (not telephone) and (not user_id):
         return None
-    sql = (
+    base_sql = (
         select(VadminPefStudent, VadminPefSchool.school_name, VadminPefGrade.grade_name, VadminPefClass.class_name)
         .select_from(VadminPefStudent)
         .join(VadminPefSchool, VadminPefStudent.school_id == VadminPefSchool.id)
         .join(VadminPefGrade, VadminPefStudent.grade_id == VadminPefGrade.id)
         .join(VadminPefClass, VadminPefStudent.class_id == VadminPefClass.id)
-        .where(VadminPefStudent.is_delete == false(), VadminPefStudent.phone == telephone)
+        .where(VadminPefStudent.is_delete == false())
         .order_by(VadminPefStudent.update_datetime.desc(), VadminPefStudent.id.desc())
     )
-    row = (await db.execute(sql)).first()
+
+    row = None
+    # 优先按 user_id 精确匹配，避免同手机号/历史脏数据匹配错学生
+    if user_id:
+        row = (await db.execute(base_sql.where(VadminPefStudent.user_id == user_id))).first()
+    if (not row) and telephone:
+        row = (await db.execute(base_sql.where(VadminPefStudent.phone == telephone))).first()
     if not row:
+        logger.warning(
+            "[fitness.self] student context not found, telephone=%s, user_id=%s",
+            telephone, user_id
+        )
         return None
     student, school_name, grade_name, class_name = row
     return {
@@ -119,6 +131,30 @@ async def _get_self_student_context(db, telephone: str | None) -> dict[str, Any]
         'school_name': school_name,
         'grade_name': grade_name,
         'class_name': class_name
+    }
+
+
+async def _get_self_score_context(db, telephone: str | None) -> dict[str, Any] | None:
+    if not telephone:
+        return None
+    row = (await db.execute(
+        select(VadminSportScore)
+        .where(
+            VadminSportScore.is_delete == false(),
+            VadminSportScore.biz_type == 'fitness',
+            VadminSportScore.mobile == telephone
+        )
+        .order_by(VadminSportScore.update_datetime.desc(), VadminSportScore.id.desc())
+        .limit(1)
+    )).scalars().first()
+    if not row:
+        logger.warning("[fitness.self] score fallback context not found by mobile, telephone=%s", telephone)
+        return None
+    return {
+        'school_name': row.school_name,
+        'grade_name': row.grade_name,
+        'class_name': row.class_name,
+        'student_no': row.student_no
     }
 
 
@@ -284,26 +320,11 @@ def _calc_by_rule(
     if pass_v == 0 and excellent_v == 0 and full_v == 0:
         return {}
 
-    is_lower_better = False
-    if full_v and pass_v:
-        is_lower_better = full_v < pass_v
-    elif excellent_v and pass_v:
-        is_lower_better = excellent_v < pass_v
-
-    if is_lower_better:
-        is_pass = raw_score <= pass_v if pass_v else False
-        is_excellent = raw_score <= excellent_v if excellent_v else False
-        is_full = raw_score <= full_v if full_v else False
-    else:
-        is_pass = raw_score >= pass_v if pass_v else False
-        is_excellent = raw_score >= excellent_v if excellent_v else False
-        is_full = raw_score >= full_v if full_v else False
-
-    return {
-        'is_pass': is_pass,
-        'is_excellent': is_excellent,
-        'is_full': is_full
-    }
+    return RuleEngine.eval_by_threshold(raw_score, {
+        'pass': pass_v,
+        'excellent': excellent_v,
+        'full': full_v
+    })
 
 
 @app.get('/overview', summary='体测总览')
@@ -536,6 +557,10 @@ async def get_student_analysis(
                 break
     batches = [b for b in batches if _in_scope(auth, b.school_name, b.class_name)]
     if not batches:
+        logger.info(
+            "[fitness.analysis.student] empty: no batches, student_no=%s, school=%s, grade=%s, class=%s, stage_type=%s",
+            student_no, school_name, grade_name, class_name, stage_type
+        )
         return SuccessResponse(_empty_student())
 
     batch_map = {b.id: b for b in batches}
@@ -578,6 +603,10 @@ async def get_student_analysis(
 
     rows = by_student.get(selected_student_no, [])
     if not rows:
+        logger.info(
+            "[fitness.analysis.student] empty: no rows, student_no=%s, school=%s, grade=%s, class=%s, batches=%s",
+            student_no, school_name, grade_name, class_name, [b.id for b in batches]
+        )
         return SuccessResponse(_empty_student())
 
     by_batch = group_scores_by_batch(rows)
@@ -721,20 +750,90 @@ async def get_student_analysis(
     })
 
 @app.get('/analysis/student/self', summary='体测学生本人视图')
-async def get_student_analysis_self(auth: Auth = Depends(AllUserAuth())):
-    ctx = await _get_self_student_context(auth.db, getattr(auth.user, 'telephone', None))
-    if not ctx:
-        return SuccessResponse(_empty_student())
-    resp = await get_student_analysis(
-        stage_type=None,
-        school_name=ctx['school_name'],
-        grade_name=ctx['grade_name'],
-        class_name=ctx['class_name'],
-        student_no=ctx['student'].student_no,
-        auth=auth
+async def get_student_analysis_self(
+        stage_type: str | None = Query(None),
+        school_name: str | None = Query(None),
+        grade_name: str | None = Query(None),
+        class_name: str | None = Query(None),
+        student_no: str | None = Query(None),
+        auth: Auth = Depends(AllUserAuth())
+):
+    logger.info(
+        "[fitness.self] enter, user_id=%s, telephone=%s, is_staff=%s, query_student_no=%s",
+        getattr(auth.user, 'id', None), getattr(auth.user, 'telephone', None),
+        getattr(auth.user, 'is_staff', None), student_no
     )
+    if getattr(auth.user, 'is_staff', False):
+        if not student_no:
+            return SuccessResponse(_empty_student())
+        return await get_student_analysis(
+            stage_type=stage_type,
+            school_name=school_name,
+            grade_name=grade_name,
+            class_name=class_name,
+            student_no=student_no,
+            student_keyword=None,
+            student_id=None,
+            school_id=None,
+            grade_id=None,
+            class_id=None,
+            auth=auth
+        )
+
+    telephone = getattr(auth.user, 'telephone', None)
+    ctx = await _get_self_student_context(
+        auth.db,
+        telephone,
+        getattr(auth.user, 'id', None)
+    )
+    resp = None
+    if ctx:
+        logger.info(
+            "[fitness.self] student context hit: student_no=%s, school=%s, grade=%s, class=%s",
+            ctx['student'].student_no, ctx['school_name'], ctx['grade_name'], ctx['class_name']
+        )
+        resp = await get_student_analysis(
+            stage_type=None,
+            school_name=None,
+            grade_name=None,
+            class_name=None,
+            student_no=ctx['student'].student_no,
+            student_keyword=None,
+            student_id=None,
+            school_id=None,
+            grade_id=None,
+            class_id=None,
+            auth=auth
+        )
+
+    # 档案匹配失败或该档案暂无成绩时，按手机号从成绩表反查最近一条成绩进行兜底
+    payload = getattr(resp, 'data', {}).get('data') if resp else None
+    if not isinstance(payload, dict) or not payload.get('profile'):
+        score_ctx = await _get_self_score_context(auth.db, telephone)
+        if score_ctx:
+            logger.info(
+                "[fitness.self] score fallback hit: student_no=%s, school=%s, grade=%s, class=%s",
+                score_ctx['student_no'], score_ctx['school_name'], score_ctx['grade_name'], score_ctx['class_name']
+            )
+            resp = await get_student_analysis(
+                stage_type=None,
+                school_name=None,
+                grade_name=None,
+                class_name=None,
+                student_no=score_ctx['student_no'],
+                student_keyword=None,
+                student_id=None,
+                school_id=None,
+                grade_id=None,
+                class_id=None,
+                auth=auth
+            )
+
+    if not resp:
+        logger.warning("[fitness.self] final empty: no context and no fallback")
+        return SuccessResponse(_empty_student())
     payload = getattr(resp, 'data', {}).get('data')
-    if isinstance(payload, dict) and isinstance(payload.get('profile'), dict):
+    if ctx and isinstance(payload, dict) and isinstance(payload.get('profile'), dict):
         payload['profile']['student_name'] = ctx['student'].name
         payload['profile']['gender'] = ctx['student'].gender
         payload['profile']['mobile'] = ctx['student'].phone
