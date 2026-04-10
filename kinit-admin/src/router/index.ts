@@ -10,7 +10,7 @@ export const constantRouterMap: AppRouteRecordRaw[] = [
   {
     path: '/',
     component: Layout,
-    redirect: '/pe/overview',
+    redirect: '/home',
     name: 'Root',
     meta: {
       hidden: true

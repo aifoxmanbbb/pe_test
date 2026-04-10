@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 const { push } = useRouter()
 
 const errorClick = () => {
-  push('/')
+  push('/home')
 }
 </script>
 
