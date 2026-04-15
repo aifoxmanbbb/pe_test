@@ -710,31 +710,42 @@ async def get_student_analysis(
         'full_items': [sum(1 for r in by_batch.get(b.id, []) if bool(r.is_full)) for b in sorted_batches]
     }
 
-    slots, _slot_names = _fitness_slots(rows)
+    detail_items = [
+        {
+            'item_code': it.item_code,
+            'item_name': it.item_name
+        }
+        for it in standard_item_rows
+    ]
+    if not detail_items:
+        detail_items = [
+            {
+                'item_code': code,
+                'item_name': item_name_map.get(code, code)
+            }
+            for code in item_codes
+        ]
+
     detail_list = []
     for batch in sorted(sorted_batches, key=lambda b: b.id, reverse=True):
         b_rows = by_batch.get(batch.id, [])
         item_map = {r.item_code: r for r in b_rows}
-        bmi_row = item_map.get(slots['bmi'])
-        lung_row = item_map.get(slots['lung'])
-        sprint_row = item_map.get(slots['sprint'])
-        sit_row = item_map.get(slots['sit'])
-        rope_row = item_map.get(slots['rope'])
         comment = next((r.teacher_comment for r in b_rows if r.teacher_comment), '')
-        detail_list.append({
+        detail_row = {
             'batch_name': batch.batch_name,
-            'bmi_score': format_score(to_float(bmi_row.raw_score) if bmi_row else None),
-            'bmi_point': round2(to_float(bmi_row.score_value)) if bmi_row else 0.0,
-            'lung_score': format_score(to_float(lung_row.raw_score) if lung_row else None),
-            'lung_point': round2(to_float(lung_row.score_value)) if lung_row else 0.0,
-            'sprint_score': format_score(to_float(sprint_row.raw_score) if sprint_row else None),
-            'sprint_point': round2(to_float(sprint_row.score_value)) if sprint_row else 0.0,
-            'sit_score': format_score(to_float(sit_row.raw_score) if sit_row else None),
-            'sit_point': round2(to_float(sit_row.score_value)) if sit_row else 0.0,
-            'rope_score': format_score(to_float(rope_row.raw_score) if rope_row else None),
-            'rope_point': round2(to_float(rope_row.score_value)) if rope_row else 0.0,
             'teacher_comment': comment
-        })
+        }
+        detail_item_values = []
+        for item in detail_items:
+            row = item_map.get(item['item_code'])
+            detail_item_values.append({
+                'item_code': item['item_code'],
+                'item_name': item['item_name'],
+                'raw_score': format_score(to_float(row.raw_score) if row else None),
+                'score_value': round2(to_float(row.score_value)) if row else 0.0
+            })
+        detail_row['items'] = detail_item_values
+        detail_list.append(detail_row)
 
     return SuccessResponse({
         'profile': profile,
@@ -746,6 +757,7 @@ async def get_student_analysis(
         },
         'item_score_trend': {'batches': [b.batch_name for b in sorted_batches], 'series': item_score_series},
         'item_state_trend': item_state,
+        'detail_columns': detail_items,
         'detail_list': detail_list
     })
 

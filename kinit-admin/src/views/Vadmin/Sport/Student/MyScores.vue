@@ -122,13 +122,12 @@ const fitnessStateTrendOptions = reactive<any>({
 })
 
 const profile = computed(() => peData.value?.profile || fitnessData.value?.profile || null)
+const fitnessDetailColumns = computed(() => fitnessData.value?.detail_columns || [])
 const peLatestScore = computed(() => Number(peData.value?.stats?.latest_total || 0))
 const fitnessLatestScore = computed(() => {
   const row = fitnessData.value?.detail_list?.[0]
   if (!row) return 0
-  const values = [row.bmi_point, row.lung_point, row.sprint_point, row.sit_point, row.rope_point].map(
-    (v: any) => Number(v) || 0
-  )
+  const values = (row.items || []).map((item: any) => Number(item.score_value) || 0)
   if (!values.length) return 0
   return Number((values.reduce((a: number, b: number) => a + b, 0) / values.length).toFixed(2))
 })
@@ -465,9 +464,17 @@ onBeforeUnmount(() => {
           <ElCard shadow="never" header="体测成绩明细">
             <ElTable v-if="fitnessData?.detail_list?.length" :data="fitnessData.detail_list" border stripe>
               <ElTableColumn prop="batch_name" label="测试批次" min-width="140" />
-              <ElTableColumn prop="bmi_point" label="BMI" width="90" align="center" />
-              <ElTableColumn prop="lung_point" label="肺活量" width="90" align="center" />
-              <ElTableColumn prop="rope_point" label="跳绳" width="90" align="center" />
+              <ElTableColumn
+                v-for="(col, idx) in fitnessDetailColumns"
+                :key="`${col.item_code}-${idx}`"
+                :label="col.item_name"
+                min-width="110"
+                align="center"
+              >
+                <template #default="{ row }">
+                  {{ row.items?.[idx]?.score_value ?? 0 }}
+                </template>
+              </ElTableColumn>
             </ElTable>
             <ElEmpty v-else description="暂无体测明细" />
           </ElCard>

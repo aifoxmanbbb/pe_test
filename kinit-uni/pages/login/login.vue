@@ -77,7 +77,7 @@ export default {
   data() {
     return {
       loginForm: {
-        telephone: '15802375679',
+        telephone: '',
         password: ''
       },
 			isAgrement: false,
