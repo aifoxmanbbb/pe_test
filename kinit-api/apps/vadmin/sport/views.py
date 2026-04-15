@@ -53,6 +53,15 @@ def _default_user_password(telephone: str) -> str:
     return telephone[-8:] if settings.DEFAULT_PASSWORD == "0" else settings.DEFAULT_PASSWORD
 
 
+def _normalize_auth_gender(value: str | int | None) -> str:
+    text = str(value or '').strip().lower()
+    if text in {'1', 'male', 'm', '男'}:
+        return '1'
+    if text in {'0', 'female', 'f', '女', '2'}:
+        return '0'
+    return '0'
+
+
 async def _ensure_student_menu_role(db):
     root_menu = await db.scalar(select(VadminMenu).where(
         VadminMenu.perms == STUDENT_ROOT_PERM,
@@ -229,7 +238,7 @@ async def _sync_student_login_user(
             name=data.name,
             nickname=None,
             password=VadminUser.get_password_hash(_default_user_password(data.phone)),
-            gender=data.gender,
+            gender=_normalize_auth_gender(data.gender),
             is_active=data.is_active,
             is_reset_password=False,
             is_staff=False
@@ -239,7 +248,7 @@ async def _sync_student_login_user(
 
     user.telephone = data.phone
     user.name = data.name
-    user.gender = data.gender
+    user.gender = _normalize_auth_gender(data.gender)
     user.is_active = data.is_active
     user.is_staff = False
 
