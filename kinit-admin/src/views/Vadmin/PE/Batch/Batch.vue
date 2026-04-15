@@ -1,45 +1,44 @@
-<script setup lang="tsx">
-import { onMounted, reactive, ref, nextTick , computed} from 'vue'
+﻿<script setup lang="tsx">
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ContentWrap } from '@/components/ContentWrap'
 import { Search } from '@/components/Search'
-import { FormSchema, Form } from '@/components/Form'
-import { ElTag, ElDialog, ElMessageBox, ElMessage } from 'element-plus'
+import { Form, FormSchema } from '@/components/Form'
+import { ElDialog, ElMessage, ElMessageBox, ElTag } from 'element-plus'
 import { Table, TableColumn } from '@/components/Table'
 import { BaseButton } from '@/components/Button'
 import { useForm } from '@/hooks/web/useForm'
 import {
-  getPeBatchListApi,
   createPeBatchApi,
-  updatePeBatchApi,
   deletePeBatchApi,
-  getPeStandardListApi
+  getPeBatchListApi,
+  getPeStandardListApi,
+  updatePeBatchApi
 } from '@/api/vadmin/pe'
-import { getSchoolOptionsApi, getGradeOptionsApi, getClassOptionsApi } from '@/api/vadmin/sport'
+import { getClassOptionsApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/api/vadmin/sport'
 
 defineOptions({ name: 'PEBatch' })
 
-const batchList = ref([])
+const batchList = ref<any[]>([])
 const total = ref(0)
 const loading = ref(false)
 const page = ref(1)
 const limit = ref(10)
 
-const standardOptions = ref([])
-const schoolOptions = ref([])
-const gradeOptions = ref([])
-const classOptions = ref([])
+const standardOptions = ref<any[]>([])
+const schoolOptions = ref<any[]>([])
+const gradeOptions = ref<any[]>([])
+const classOptions = ref<any[]>([])
 
 const replaceOptions = (target: any[], rows: any[]) => {
   target.splice(0, target.length, ...(rows || []))
 }
 
-const searchSchema = computed<FormSchema[]>(() => [
-  { field: 'batch_name', label: '批次名称', component: 'Input' }
-])
+const searchSchema = computed<FormSchema[]>(() => [{ field: 'batch_name', label: '批次名称', component: 'Input' }])
 
 const tableColumns = reactive<TableColumn[]>([
   { field: 'id', label: 'ID', width: '60px' },
   { field: 'batch_name', label: '批次名称', minWidth: '180px' },
+  { field: 'standard_name', label: '评分标准', minWidth: '260px' },
   { field: 'school_name', label: '学校', minWidth: '120px' },
   { field: 'grade_name', label: '年级', width: '100px' },
   { field: 'class_name', label: '班级', width: '100px' },
@@ -48,7 +47,11 @@ const tableColumns = reactive<TableColumn[]>([
     label: '状态',
     slots: {
       default: (data: any) => {
-        const statusMap = { draft: 'info', ongoing: 'primary', finished: 'success' }
+        const statusMap: Record<string, 'info' | 'primary' | 'success'> = {
+          draft: 'info',
+          ongoing: 'primary',
+          finished: 'success'
+        }
         return <ElTag type={statusMap[data.row.status]}>{data.row.status}</ElTag>
       }
     }
@@ -61,8 +64,12 @@ const tableColumns = reactive<TableColumn[]>([
     slots: {
       default: (data: any) => (
         <>
-          <BaseButton type="primary" link onClick={() => handleEdit(data.row)}>编辑</BaseButton>
-          <BaseButton type="danger" link onClick={() => handleDelete(data.row)}>删除</BaseButton>
+          <BaseButton type="primary" link onClick={() => handleEdit(data.row)}>
+            编辑
+          </BaseButton>
+          <BaseButton type="danger" link onClick={() => handleDelete(data.row)}>
+            删除
+          </BaseButton>
         </>
       )
     }
@@ -72,17 +79,30 @@ const tableColumns = reactive<TableColumn[]>([
 const loadList = async () => {
   loading.value = true
   const res = await getPeBatchListApi({ page: page.value, limit: limit.value }).catch(() => null)
-  if (res && res.data) {
-    batchList.value = res.data.items
-    total.value = res.data.total
+  if (res?.data) {
+    batchList.value = res.data.items || []
+    total.value = res.data.total || 0
   }
   loading.value = false
 }
 
 const loadFormOptions = async () => {
-  const [sRes, schRes] = await Promise.all([getPeStandardListApi(), getSchoolOptionsApi()])
-  if (sRes) replaceOptions(standardOptions.value, sRes.data.map(i => ({ label: i.name, value: i.id })))
-  if (schRes) replaceOptions(schoolOptions.value, schRes.data.map(i => ({ label: i.label, value: i.school_name })))
+  const [standardRes, schoolRes] = await Promise.all([getPeStandardListApi(), getSchoolOptionsApi()])
+  if (standardRes?.data) {
+    replaceOptions(
+      standardOptions.value,
+      standardRes.data.map((item: any) => ({
+        label: `${item.name} [${item.version}]`,
+        value: item.id
+      }))
+    )
+  }
+  if (schoolRes?.data) {
+    replaceOptions(
+      schoolOptions.value,
+      schoolRes.data.map((item: any) => ({ label: item.label, value: item.school_name }))
+    )
+  }
 }
 
 const { formRegister, formMethods } = useForm()
@@ -91,12 +111,12 @@ const currentId = ref<number | null>(null)
 
 const formSchema = reactive<FormSchema[]>([
   { field: 'batch_name', label: '批次名称', component: 'Input', required: true },
-  { 
-    field: 'standard_id', 
-    label: '评分标准', 
-    component: 'Select', 
-    required: true, 
-    componentProps: { options: standardOptions.value } 
+  {
+    field: 'standard_id',
+    label: '评分标准',
+    component: 'Select',
+    required: true,
+    componentProps: { options: standardOptions.value }
   },
   {
     field: 'stage_type',
@@ -109,37 +129,43 @@ const formSchema = reactive<FormSchema[]>([
       ]
     }
   },
-  { 
-    field: 'school_name', 
-    label: '学校名称', 
-    component: 'Select', 
-    componentProps: { 
+  {
+    field: 'school_name',
+    label: '学校名称',
+    component: 'Select',
+    componentProps: {
       options: schoolOptions.value,
       onChange: async (val: string) => {
-        const res = await getGradeOptionsApi({ school_name: val })
-        replaceOptions(gradeOptions.value, res.data.map(i => ({ label: i.label, value: i.grade_name })))
+        const res = await getGradeOptionsApi({ school_name: val }).catch(() => null)
+        replaceOptions(
+          gradeOptions.value,
+          res?.data ? res.data.map((item: any) => ({ label: item.label, value: item.grade_name })) : []
+        )
         formMethods.setValues({ grade_name: null, class_name: null })
       }
     }
   },
-  { 
-    field: 'grade_name', 
-    label: '年级', 
-    component: 'Select', 
-    componentProps: { 
+  {
+    field: 'grade_name',
+    label: '年级',
+    component: 'Select',
+    componentProps: {
       options: gradeOptions.value,
       onChange: async (val: string) => {
         const formData = await formMethods.getFormData()
-        const res = await getClassOptionsApi({ school_name: formData?.school_name, grade_name: val })
-        replaceOptions(classOptions.value, res.data.map(i => ({ label: i.label, value: i.class_name })))
+        const res = await getClassOptionsApi({ school_name: formData?.school_name, grade_name: val }).catch(() => null)
+        replaceOptions(
+          classOptions.value,
+          res?.data ? res.data.map((item: any) => ({ label: item.label, value: item.class_name })) : []
+        )
         formMethods.setValues({ class_name: null })
       }
     }
   },
-  { 
-    field: 'class_name', 
-    label: '班级', 
-    component: 'Select', 
+  {
+    field: 'class_name',
+    label: '班级',
+    component: 'Select',
     componentProps: { options: classOptions.value }
   },
   {
@@ -166,14 +192,19 @@ const handleAdd = () => {
 const handleEdit = async (row: any) => {
   currentId.value = row.id
   dialogVisible.value = true
-  // 同步加载级联数据
   if (row.school_name) {
-    const resG = await getGradeOptionsApi({ school_name: row.school_name })
-    replaceOptions(gradeOptions.value, resG.data.map(i => ({ label: i.label, value: i.grade_name || i.value })))
+    const gradeRes = await getGradeOptionsApi({ school_name: row.school_name }).catch(() => null)
+    replaceOptions(
+      gradeOptions.value,
+      gradeRes?.data ? gradeRes.data.map((item: any) => ({ label: item.label, value: item.grade_name || item.value })) : []
+    )
   }
   if (row.grade_name) {
-    const resC = await getClassOptionsApi({ school_name: row.school_name, grade_name: row.grade_name })
-    replaceOptions(classOptions.value, resC.data.map(i => ({ label: i.label, value: i.class_name || i.value })))
+    const classRes = await getClassOptionsApi({ school_name: row.school_name, grade_name: row.grade_name }).catch(() => null)
+    replaceOptions(
+      classOptions.value,
+      classRes?.data ? classRes.data.map((item: any) => ({ label: item.label, value: item.class_name || item.value })) : []
+    )
   }
   nextTick(() => formMethods.setValues(row))
 }
@@ -204,11 +235,19 @@ onMounted(() => {
 
 <template>
   <ContentWrap>
-    <Search :schema="searchSchema" @search="loadList" @reset="loadList" class="mb-20px" />
+    <Search :schema="searchSchema" class="mb-20px" @search="loadList" @reset="loadList" />
     <div class="mb-10px">
       <BaseButton type="primary" @click="handleAdd">新增体考批次</BaseButton>
     </div>
-    <Table :columns="tableColumns" :data="batchList" :loading="loading" :pagination="{ total }" v-model:pageSize="limit" v-model:currentPage="page" @register="loadList" />
+    <Table
+      v-model:currentPage="page"
+      v-model:pageSize="limit"
+      :columns="tableColumns"
+      :data="batchList"
+      :loading="loading"
+      :pagination="{ total }"
+      @register="loadList"
+    />
     <ElDialog v-model="dialogVisible" :title="currentId ? '编辑批次' : '新增批次'" width="600px" destroy-on-close>
       <Form :schema="formSchema" @register="formRegister" />
       <template #footer>
