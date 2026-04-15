@@ -84,6 +84,8 @@ class BatchOut(BaseModel):
     biz_type: str
     batch_name: str
     standard_id: int
+    standard_name: Optional[str] = None
+    standard_version: Optional[str] = None
     school_name: str
     grade_name: str
     class_name: str

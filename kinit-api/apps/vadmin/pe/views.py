@@ -1420,16 +1420,33 @@ async def get_batch_list(
     sql = sql.order_by(VadminSportBatch.id.desc())
     rows = (await auth.db.scalars(sql)).all()
     rows = [r for r in rows if _in_scope(auth, r.school_name, r.class_name)]
+
+    standard_ids = list({r.standard_id for r in rows if getattr(r, 'standard_id', None)})
+    standard_map: dict[int, VadminSportStandard] = {}
+    if standard_ids:
+        standards = (await auth.db.scalars(select(VadminSportStandard).where(
+            VadminSportStandard.is_delete == false(),
+            VadminSportStandard.id.in_(standard_ids)
+        ))).all()
+        standard_map = {s.id: s for s in standards}
     
     total = len(rows)
     start = (page - 1) * limit
     end = start + limit
     paged_rows = rows[start:end]
     
-    # 转换为 Pydantic 序列化对象字典列表
+    items = []
+    for r in paged_rows:
+        item = json.loads(schemas.BatchOut.model_validate(r).model_dump_json())
+        standard = standard_map.get(r.standard_id)
+        if standard:
+            item['standard_name'] = standard.name
+            item['standard_version'] = standard.version
+        items.append(item)
+
     return SuccessResponse({
         'total': total,
-        'items': [json.loads(schemas.BatchOut.model_validate(r).model_dump_json()) for r in paged_rows]
+        'items': items
     })
 
 
