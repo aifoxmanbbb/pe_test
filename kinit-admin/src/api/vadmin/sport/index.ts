@@ -13,6 +13,14 @@ export const getClassOptionsApi = (params?: any): Promise<IResponse<any>> => {
   return request.get({ url: '/vadmin/sport/options/classes', params })
 }
 
+export const getSchoolLeaderOptionsApi = (): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/sport/options/users/leaders' })
+}
+
+export const getTeacherCoachOptionsApi = (): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/sport/options/users/coaches' })
+}
+
 export const getStandardItemOptionsApi = (params: { standard_id: number }): Promise<IResponse<any>> => {
   return request.get({ url: '/vadmin/sport/options/standard/items', params })
 }

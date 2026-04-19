@@ -6,12 +6,18 @@ import { ElDialog, ElMessage, ElSwitch, ElInput, ElInputNumber } from 'element-p
 import { Table, TableColumn } from '@/components/Table'
 import { BaseButton } from '@/components/Button'
 import { useForm } from '@/hooks/web/useForm'
-import { getSchoolListApi, createSchoolApi, updateSchoolApi } from '@/api/vadmin/sport'
+import {
+  getSchoolListApi,
+  createSchoolApi,
+  updateSchoolApi,
+  getSchoolLeaderOptionsApi
+} from '@/api/vadmin/sport'
 
 defineOptions({ name: 'PEFSchool' })
 
 const loading = ref(false)
 const list = ref([])
+const leaderOptions = ref([])
 const stageOptions = [
   { label: '小学', value: 'primary' },
   { label: '初中', value: 'mid' },
@@ -31,6 +37,14 @@ const tableColumns = reactive<TableColumn[]>([
   { field: 'school_name', label: '学校名称' },
   { field: 'school_code', label: '学校代码' },
   { field: 'region', label: '所属地区' },
+  {
+    field: 'leader_names',
+    label: '关联校领导',
+    minWidth: '220px',
+    slots: {
+      default: (data: any) => (data.row.leader_names || []).join(' / ') || '-'
+    }
+  },
   {
     field: 'stage_types',
     label: '学段',
@@ -80,6 +94,11 @@ const loadList = async () => {
   }
 }
 
+const loadLeaderOptions = async () => {
+  const res = await getSchoolLeaderOptionsApi().catch(() => null)
+  if (res) leaderOptions.value = res.data || []
+}
+
 const { formRegister, formMethods } = useForm()
 const dialogVisible = ref(false)
 const currentId = ref<number | null>(null)
@@ -101,6 +120,18 @@ const formSchema = reactive<FormSchema[]>([
       clearable: true
     }
   },
+  {
+    field: 'leader_user_ids',
+    label: '校领导',
+    component: 'Select',
+    componentProps: {
+      options: leaderOptions,
+      multiple: true,
+      collapseTags: true,
+      collapseTagsTooltip: true,
+      clearable: true
+    }
+  },
   { field: 'sort', label: '排序', component: 'InputNumber', value: 0 },
   { field: 'is_active', label: '启用', component: 'Switch', value: true }
 ])
@@ -109,7 +140,15 @@ const handleAdd = () => {
   currentId.value = null
   dialogVisible.value = true
   nextTick(() => {
-    formMethods.setValues({ school_name: '', school_code: '', region: '', stage_types: ['mid'], sort: 0, is_active: true })
+    formMethods.setValues({
+      school_name: '',
+      school_code: '',
+      region: '',
+      stage_types: ['mid'],
+      leader_user_ids: [],
+      sort: 0,
+      is_active: true
+    })
   })
 }
 
@@ -119,7 +158,8 @@ const handleEdit = (row: any) => {
   nextTick(() => {
     formMethods.setValues({
       ...row,
-      stage_types: String(row.stage_types || '').split(',').filter(Boolean)
+      stage_types: String(row.stage_types || '').split(',').filter(Boolean),
+      leader_user_ids: row.leader_user_ids || []
     })
   })
 }
@@ -150,6 +190,7 @@ const submit = async () => {
 }
 
 onMounted(loadList)
+onMounted(loadLeaderOptions)
 </script>
 
 <template>

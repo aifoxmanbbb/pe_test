@@ -11,6 +11,10 @@ defineProps({
   showSearch: propTypes.bool.def(true),
   showReset: propTypes.bool.def(true),
   showExpand: propTypes.bool.def(false),
+  searchButtonCircle: propTypes.bool.def(false),
+  searchButtonIconOnly: propTypes.bool.def(false),
+  searchButtonClass: propTypes.string.def(''),
+  searchButtonIcon: propTypes.string.def('ep:search'),
   visible: propTypes.bool.def(true),
   searchLoading: propTypes.bool.def(false),
   resetLoading: propTypes.bool.def(false)
@@ -31,10 +35,21 @@ const onExpand = () => {
 
 <template>
   <BaseButton
-    v-if="showSearch"
+    v-if="showSearch && searchButtonIconOnly"
     type="primary"
+    :circle="searchButtonCircle"
+    :class="searchButtonClass"
     :loading="searchLoading"
-    :icon="useIcon({ icon: 'ep:search' })"
+    :icon="useIcon({ icon: searchButtonIcon })"
+    @click="onSearch"
+  />
+  <BaseButton
+    v-else-if="showSearch"
+    type="primary"
+    :circle="searchButtonCircle"
+    :class="searchButtonClass"
+    :loading="searchLoading"
+    :icon="useIcon({ icon: searchButtonIcon })"
     @click="onSearch"
   >
     {{ t('common.query') }}

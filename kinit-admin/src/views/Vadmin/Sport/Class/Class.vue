@@ -6,7 +6,14 @@ import { ElDialog, ElMessage, ElSwitch } from 'element-plus'
 import { Table, TableColumn } from '@/components/Table'
 import { BaseButton } from '@/components/Button'
 import { useForm } from '@/hooks/web/useForm'
-import { getClassListApi, createClassApi, updateClassApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/api/vadmin/sport'
+import {
+  getClassListApi,
+  createClassApi,
+  updateClassApi,
+  getGradeOptionsApi,
+  getSchoolOptionsApi,
+  getTeacherCoachOptionsApi
+} from '@/api/vadmin/sport'
 
 defineOptions({ name: 'PEFClass' })
 
@@ -14,6 +21,7 @@ const loading = ref(false)
 const list = ref([])
 const schoolOptions = ref([])
 const gradeOptions = ref([])
+const coachOptions = ref([])
 
 const tableColumns = reactive<TableColumn[]>([
   { field: 'id', label: 'ID', width: '80px' },
@@ -21,6 +29,14 @@ const tableColumns = reactive<TableColumn[]>([
   { field: 'grade_name', label: '所属年级', width: '120px' },
   { field: 'class_name', label: '班级名称' },
   { field: 'class_code', label: '班级编码' },
+  {
+    field: 'coach_names',
+    label: '关联老师教练',
+    minWidth: '220px',
+    slots: {
+      default: (data: any) => (data.row.coach_names || []).join(' / ') || '-'
+    }
+  },
   {
     field: 'is_active',
     label: '状态',
@@ -54,6 +70,11 @@ const loadSchools = async () => {
   if (res) schoolOptions.value = res.data
 }
 
+const loadCoachOptions = async () => {
+  const res = await getTeacherCoachOptionsApi().catch(() => null)
+  if (res) coachOptions.value = res.data
+}
+
 const { formRegister, formMethods } = useForm()
 const dialogVisible = ref(false)
 const currentId = ref<number | null>(null)
@@ -82,13 +103,34 @@ const formSchema = reactive<FormSchema[]>([
   },
   { field: 'class_name', label: '班级名称', component: 'Input', required: true },
   { field: 'class_code', label: '班级编码', component: 'Input' },
+  {
+    field: 'coach_user_ids',
+    label: '老师教练',
+    component: 'Select',
+    componentProps: {
+      options: coachOptions,
+      multiple: true,
+      collapseTags: true,
+      collapseTagsTooltip: true,
+      clearable: true
+    }
+  },
   { field: 'sort', label: '排序', component: 'InputNumber', value: 0 }
 ])
 
 const handleAdd = () => {
   currentId.value = null
   dialogVisible.value = true
-  nextTick(() => formMethods.setValues({ class_name: '', class_code: '', sort: 0, school_id: null, grade_id: null }))
+  nextTick(() =>
+    formMethods.setValues({
+      class_name: '',
+      class_code: '',
+      coach_user_ids: [],
+      sort: 0,
+      school_id: null,
+      grade_id: null
+    })
+  )
 }
 
 const handleEdit = async (row: any) => {
@@ -97,7 +139,7 @@ const handleEdit = async (row: any) => {
   // 必须先加载对应学校的年级列表
   const res = await getGradeOptionsApi({ school_id: row.school_id })
   gradeOptions.value = res.data
-  nextTick(() => formMethods.setValues(row))
+  nextTick(() => formMethods.setValues({ ...row, coach_user_ids: row.coach_user_ids || [] }))
 }
 
 const submit = async () => {
@@ -116,6 +158,7 @@ const submit = async () => {
 onMounted(() => {
   loadList()
   loadSchools()
+  loadCoachOptions()
 })
 </script>
 

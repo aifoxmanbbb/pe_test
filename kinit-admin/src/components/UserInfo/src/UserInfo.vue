@@ -11,17 +11,11 @@ import { useRouter } from 'vue-router'
 import avatar from '@/assets/imgs/avatar.jpg'
 
 const lockStore = useLockStore()
-
 const getIsLock = computed(() => lockStore.getLockInfo?.isLock ?? false)
-
 const authStore = useAuthStore()
-
 const { getPrefixCls } = useDesign()
-
 const prefixCls = getPrefixCls('user-info')
-
 const { push } = useRouter()
-
 const { t } = useI18n()
 
 const loginOut = () => {
@@ -38,13 +32,12 @@ const loginOut = () => {
 
 const dialogVisible = ref<boolean>(false)
 
-// 锁定屏幕
 const lockScreen = () => {
   dialogVisible.value = true
 }
 
-const toHome = () => {
-  push('/home')
+const toProfile = () => {
+  push('/profile')
 }
 
 const toGitee = () => {
@@ -73,7 +66,7 @@ const user = computed(() => authStore.getUser)
     <template #dropdown>
       <ElDropdownMenu>
         <ElDropdownItem>
-          <BaseButton @click="toHome" link>个人主页</BaseButton>
+          <BaseButton @click="toProfile" link>个人主页</BaseButton>
         </ElDropdownItem>
         <ElDropdownItem>
           <div @click="loginOut">{{ t('common.loginOut') }}</div>

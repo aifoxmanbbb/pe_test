@@ -28,6 +28,31 @@ export const constantRouterMap: AppRouteRecordRaw[] = [
           hidden: true,
           noCache: true,
           noTagsView: false,
+          title: '驾驶舱首页'
+        }
+      }
+    ]
+  },
+  {
+    path: '/profile',
+    component: Layout,
+    name: 'ProfileRoot',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: '',
+        name: 'Profile',
+        component: () => import('@/views/Home/Profile.vue'),
+        meta: {
+          affix: false,
+          alwaysShow: true,
+          breadcrumb: true,
+          canTo: true,
+          hidden: true,
+          noCache: true,
+          noTagsView: true,
           title: '个人主页'
         }
       }
@@ -153,6 +178,8 @@ export const resetRouter = (): void => {
     'ResetPassword',
     'Redirect',
     'Home',
+    'ProfileRoot',
+    'Profile',
     'Docs',
     'Privacy',
     'Agreement'

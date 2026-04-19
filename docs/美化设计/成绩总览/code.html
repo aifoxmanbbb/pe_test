@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>成绩总览 - 体育考试管理系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-background": "#0b1c30",
+                        "background": "#f8f9ff",
+                        "on-error-container": "#93000a",
+                        "surface-dim": "#cbdbf5",
+                        "on-surface-variant": "#3d4947",
+                        "tertiary-container": "#00855b",
+                        "surface-container-low": "#eff4ff",
+                        "on-secondary": "#ffffff",
+                        "surface-variant": "#d3e4fe",
+                        "error-container": "#ffdad6",
+                        "inverse-surface": "#213145",
+                        "primary": "#00685f",
+                        "surface-bright": "#f8f9ff",
+                        "on-primary-fixed-variant": "#005049",
+                        "primary-container": "#008378",
+                        "inverse-on-surface": "#eaf1ff",
+                        "tertiary": "#006947",
+                        "outline": "#6d7a77",
+                        "surface-container-high": "#dce9ff",
+                        "on-error": "#ffffff",
+                        "on-surface": "#0b1c30",
+                        "surface-container-lowest": "#ffffff",
+                        "secondary-container": "#d9dff5",
+                        "error": "#ba1a1a",
+                        "surface-container-highest": "#d3e4fe",
+                        "tertiary-fixed": "#6ffbbe",
+                        "on-tertiary-fixed": "#002113",
+                        "on-secondary-fixed": "#141b2b",
+                        "surface": "#f8f9ff",
+                        "inverse-primary": "#6bd8cb",
+                        "on-tertiary-container": "#f5fff6",
+                        "surface-tint": "#006a61",
+                        "tertiary-fixed-dim": "#4edea3",
+                        "secondary": "#575e70",
+                        "on-primary": "#ffffff",
+                        "outline-variant": "#bcc9c6",
+                        "on-tertiary-fixed-variant": "#005236",
+                        "on-primary-fixed": "#00201d",
+                        "on-primary-container": "#f4fffc",
+                        "surface-container": "#e5eeff",
+                        "secondary-fixed": "#dce2f7",
+                        "primary-fixed": "#89f5e7",
+                        "primary-fixed-dim": "#6bd8cb",
+                        "secondary-fixed-dim": "#c0c6db",
+                        "on-tertiary": "#ffffff",
+                        "on-secondary-container": "#5c6274",
+                        "on-secondary-fixed-variant": "#404758",
+                        "success": "#10B981",
+                        "warning": "#F59E0B"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Plus Jakarta Sans"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .kinetic-gradient {
+            background: linear-gradient(135deg, #00685f 0%, #008378 100%);
+        }
+        .dot-grid {
+            background-image: radial-gradient(#bcc9c6 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body selection:bg-primary/20">
+<!-- SideNavBar -->
+<aside class="h-screen w-64 fixed left-0 top-0 z-40 bg-slate-50 dark:bg-slate-950 flex flex-col py-8 px-4 gap-2 font-['Plus_Jakarta_Sans'] text-sm font-medium">
+<div class="mb-8 px-4 flex items-center gap-3">
+<div class="w-10 h-10 kinetic-gradient rounded-xl flex items-center justify-center text-white shadow-lg">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">bolt</span>
+</div>
+<div>
+<h2 class="text-teal-700 font-black leading-tight">Kinetic Admin</h2>
+<p class="text-[10px] text-slate-500 tracking-widest uppercase">动能精密系统</p>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-400 shadow-sm rounded-xl hover:translate-x-1 transition-transform duration-300" href="#">
+<span class="material-symbols-outlined">analytics</span>
+<span>成绩总览</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:translate-x-1 transition-transform duration-300" href="#">
+<span class="material-symbols-outlined">sports_score</span>
+<span>项目配置</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:translate-x-1 transition-transform duration-300" href="#">
+<span class="material-symbols-outlined">group</span>
+<span>学生管理</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:translate-x-1 transition-transform duration-300" href="#">
+<span class="material-symbols-outlined">sensors</span>
+<span>实时监测</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:translate-x-1 transition-transform duration-300" href="#">
+<span class="material-symbols-outlined">insights</span>
+<span>系统统计</span>
+</a>
+</nav>
+<div class="mt-auto border-t border-slate-100 pt-4 space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:translate-x-1 transition-transform duration-300" href="#">
+<span class="material-symbols-outlined">account_circle</span>
+<span>个人中心</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:translate-x-1 transition-transform duration-300" href="#">
+<span class="material-symbols-outlined">logout</span>
+<span>退出登录</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 min-h-screen flex flex-col">
+<!-- TopNavBar -->
+<header class="bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-100 dark:border-slate-800 sticky top-0 z-50 h-16 w-full flex justify-between items-center px-8 shadow-sm dark:shadow-none font-['Plus_Jakarta_Sans'] tracking-tight">
+<div class="flex items-center gap-2">
+<span class="text-lg font-extrabold text-slate-900 dark:text-white">体育考试管理系统</span>
+<span class="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-md ml-2">V4.2</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-3 text-slate-400 text-sm">search</span>
+<input class="pl-10 pr-4 py-1.5 bg-slate-50 border-none rounded-full text-sm w-64 focus:ring-2 focus:ring-primary/20" placeholder="搜索考生、项目或报表..." type="text"/>
+</div>
+<div class="flex items-center gap-4 border-l border-slate-100 pl-6 text-slate-500">
+<button class="hover:bg-slate-50 p-2 rounded-full transition-colors relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full border-2 border-white"></span>
+</button>
+<button class="hover:bg-slate-50 p-2 rounded-full transition-colors">
+<span class="material-symbols-outlined">help_outline</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-slate-200">
+<img alt="Administrator Profile" class="w-full h-full object-cover" data-alt="close-up portrait of a professional male administrator with glasses in a minimalist tech office setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAdfeZG5VEM0TNjjwf5Mz75lWwGcI9ZpdhF-w3Bs20l_4PLWaRC4G2kN_ZXuTWoKeMJvkZiPzps7q4c2nN6vSFfbfGWREO4o41P03QlrFKvOkDVaHApdE-_4pPdX0KesyY7hV-rgDMZVegy7A0x-FcJOCpyZW86yBmG1rIihMO01BRnWIHJ__1K8VDO1gJSJvJ-fo5HaKrlDhPKNS7E93f2FDPwO4bmgHj2Gv51z-vrpcE-QBbbbKUaIWQuXzmSVkCPlcqFa2sqC46m"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Page Canvas -->
+<div class="p-8 flex-1 dot-grid">
+<!-- Filter Row -->
+<div class="flex items-center justify-between mb-8 bg-white/50 backdrop-blur-md p-4 rounded-2xl shadow-sm border border-white/40">
+<div class="flex items-center gap-4 overflow-x-auto no-scrollbar">
+<div class="flex flex-col">
+<span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 px-1">批次 (Batch)</span>
+<select class="border-none bg-transparent text-sm font-semibold focus:ring-0 cursor-pointer text-on-surface">
+<option>2024 春季体考第一批次</option>
+<option>2023 秋季补考</option>
+</select>
+</div>
+<div class="h-8 w-px bg-outline-variant/30"></div>
+<div class="flex flex-col">
+<span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 px-1">学校 (School)</span>
+<select class="border-none bg-transparent text-sm font-semibold focus:ring-0 cursor-pointer text-on-surface">
+<option>第一实验中学</option>
+<option>江城高级中学</option>
+</select>
+</div>
+<div class="h-8 w-px bg-outline-variant/30"></div>
+<div class="flex flex-col">
+<span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 px-1">年级 (Grade)</span>
+<select class="border-none bg-transparent text-sm font-semibold focus:ring-0 cursor-pointer text-on-surface">
+<option>九年级 (Junior 3)</option>
+<option>八年级 (Junior 2)</option>
+</select>
+</div>
+<div class="h-8 w-px bg-outline-variant/30"></div>
+<div class="flex flex-col">
+<span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 px-1">班级 (Class)</span>
+<select class="border-none bg-transparent text-sm font-semibold focus:ring-0 cursor-pointer text-on-surface">
+<option>全部班级</option>
+<option>01班</option>
+<option>02班</option>
+</select>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="bg-primary text-white px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-sm">filter_alt</span>
+                        筛选
+                    </button>
+<button class="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors">
+<span class="material-symbols-outlined text-sm">download</span>
+</button>
+</div>
+</div>
+<!-- Hero Section: Kinetic Overview -->
+<section class="relative overflow-hidden rounded-[2.5rem] bg-slate-900 min-h-[520px] flex items-center shadow-2xl">
+<!-- Background Layer: Depth & Patterns -->
+<div class="absolute inset-0 z-0 opacity-20 overflow-hidden">
+<div class="absolute top-0 right-0 w-full h-full bg-[radial-gradient(circle_at_70%_50%,rgba(0,104,95,0.4)_0%,transparent_60%)]"></div>
+<!-- Perspective Lines -->
+<svg class="absolute bottom-0 right-0 w-3/4 h-3/4 text-white/10" preserveaspectratio="none" viewbox="0 0 100 100">
+<path d="M0 100 L80 0 M20 100 L90 0 M40 100 L100 0" fill="none" stroke="currentColor" stroke-width="0.1"></path>
+</svg>
+<!-- Pulse Circles -->
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] border border-white/5 rounded-full"></div>
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] border border-white/5 rounded-full"></div>
+</div>
+<!-- Content Grid -->
+<div class="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 w-full h-full px-12 items-center">
+<!-- Left: Editorial Content -->
+<div class="lg:col-span-5 space-y-6">
+<div class="inline-flex items-center gap-2 px-3 py-1 bg-primary/20 border border-primary/30 rounded-full text-primary-fixed font-bold text-xs tracking-widest uppercase">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+</span>
+                            Live Data Intelligence
+                        </div>
+<h1 class="text-white text-6xl lg:text-8xl font-extrabold font-headline leading-[0.9] tracking-tighter">
+                            成绩<br/><span class="text-primary-fixed">总览</span>
+</h1>
+<p class="text-slate-400 text-lg max-w-md font-medium leading-relaxed">
+                            多维查看本次体考整体表现与达标情况。实时同步 12 个考核项目的数字化反馈。
+                        </p>
+<div class="flex items-center gap-4 pt-4">
+<button class="bg-primary hover:bg-primary-container text-white px-8 py-4 rounded-2xl font-bold transition-all flex items-center gap-3 group shadow-xl shadow-primary/20">
+                                生成深度报告
+                                <span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">arrow_forward</span>
+</button>
+<button class="text-white hover:text-primary-fixed flex items-center gap-2 font-bold transition-colors">
+<span class="material-symbols-outlined">play_circle</span>
+                                动态重演
+                            </button>
+</div>
+</div>
+<!-- Right: Kinetic Visuals -->
+<div class="lg:col-span-7 relative h-full flex items-center justify-center min-h-[450px]">
+<!-- Main Athlete Visual -->
+<div class="relative z-20 w-full h-full flex items-center justify-center">
+<div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1552674605-db6ffd4facb5?q=80&amp;w=2070&amp;auto=format&amp;fit=crop')] bg-cover bg-center mix-blend-overlay opacity-40 rounded-[3rem]" data-alt="dramatic cinematic silhouette of a sprinter at the finish line in a modern stadium with lens flare and track perspective"></div>
+<!-- Dynamic Data Rings -->
+<div class="relative w-80 h-80 rounded-full border-[12px] border-white/5 flex items-center justify-center">
+<svg class="absolute inset-0 transform -rotate-90 w-full h-full">
+<circle class="text-primary" cx="160" cy="160" fill="transparent" r="148" stroke="currentColor" stroke-dasharray="930" stroke-dashoffset="93" stroke-width="12"></circle>
+</svg>
+<div class="text-center">
+<span class="text-white text-6xl font-black font-headline tracking-tighter">91.4</span>
+<span class="text-primary-fixed font-bold text-xl ml-1">Avg.</span>
+<div class="text-slate-400 text-sm font-bold uppercase tracking-widest mt-1">综合分值</div>
+</div>
+</div>
+<!-- Floating Indicators (Bento Grid Style for Indicators) -->
+<!-- Indicator 1: Total -->
+<div class="absolute top-0 right-4 glass-panel p-5 rounded-3xl border border-white/20 shadow-2xl transform hover:-translate-y-2 transition-transform duration-500 w-48">
+<div class="flex items-center gap-3 mb-2">
+<div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">group</span>
+</div>
+<span class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">参考人数</span>
+</div>
+<div class="text-3xl font-extrabold text-on-surface">1,280<span class="text-sm font-medium ml-1">人</span></div>
+<div class="mt-2 h-1 w-full bg-slate-100 rounded-full overflow-hidden">
+<div class="h-full bg-slate-400 w-full"></div>
+</div>
+</div>
+<!-- Indicator 2: Pass Rate -->
+<div class="absolute -bottom-4 right-20 glass-panel p-5 rounded-3xl border border-white/20 shadow-2xl transform hover:-translate-y-2 transition-transform duration-500 w-48">
+<div class="flex items-center gap-3 mb-2">
+<div class="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center text-warning">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<span class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">及格率</span>
+</div>
+<div class="text-3xl font-extrabold text-on-surface">98.2<span class="text-sm font-medium ml-1">%</span></div>
+<div class="mt-2 flex items-center justify-between text-[10px] font-bold text-warning">
+<span>目标: 95%</span>
+<span class="material-symbols-outlined text-xs">trending_up</span>
+</div>
+</div>
+<!-- Indicator 3: Excellence Rate -->
+<div class="absolute top-10 left-0 glass-panel p-5 rounded-3xl border border-white/20 shadow-2xl transform hover:-translate-y-2 transition-transform duration-500 w-48">
+<div class="flex items-center gap-3 mb-2">
+<div class="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center text-success">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">stars</span>
+</div>
+<span class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">优秀率</span>
+</div>
+<div class="text-3xl font-extrabold text-on-surface">45.6<span class="text-sm font-medium ml-1">%</span></div>
+<div class="mt-2 h-1 w-full bg-slate-100 rounded-full overflow-hidden">
+<div class="h-full bg-success w-[45%]"></div>
+</div>
+</div>
+<!-- Indicator 4: Perfect Rate -->
+<div class="absolute bottom-12 left-8 bg-on-surface p-5 rounded-3xl shadow-2xl transform hover:-translate-y-2 transition-transform duration-500 w-48 border border-white/10">
+<div class="flex items-center gap-3 mb-2">
+<div class="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center text-primary-fixed">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">workspace_premium</span>
+</div>
+<span class="text-[10px] text-primary-fixed/60 font-bold uppercase tracking-widest">满分率</span>
+</div>
+<div class="text-3xl font-extrabold text-white">12.8<span class="text-sm font-medium ml-1">人</span></div>
+<div class="mt-2 text-[10px] text-primary-fixed font-medium italic">较往期 +2.4%</div>
+</div>
+<!-- Floating Rank Cards (Abstract) -->
+<div class="absolute top-1/4 -right-8 glass-panel py-2 px-4 rounded-xl border border-white/30 rotate-12 shadow-lg flex items-center gap-3 scale-90 opacity-80">
+<div class="w-6 h-6 rounded-full bg-slate-200"></div>
+<div class="text-[10px] font-bold text-slate-600">张晓刚 - 50m冲刺 - 6.2s</div>
+</div>
+<div class="absolute bottom-1/3 -left-12 glass-panel py-2 px-4 rounded-xl border border-white/30 -rotate-6 shadow-lg flex items-center gap-3 scale-90 opacity-80">
+<div class="w-6 h-6 rounded-full bg-slate-200"></div>
+<div class="text-[10px] font-bold text-slate-600">陈丽丽 - 跳远 - 2.85m</div>
+</div>
+<!-- Track/Stopwatch detail -->
+<div class="absolute bottom-4 right-4 text-white/20 select-none pointer-events-none">
+<span class="text-[80px] font-black italic tracking-tighter">00:12:45:92</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Bottom Fragment Grid (Subtle Data Context) -->
+<div class="mt-8 grid grid-cols-1 md:grid-cols-4 gap-6">
+<div class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col justify-between group hover:border-primary/20 transition-colors">
+<div>
+<h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">不及格预警</h4>
+<div class="flex items-end gap-2">
+<span class="text-4xl font-bold text-error tracking-tighter">23</span>
+<span class="text-slate-400 font-medium mb-1">Students</span>
+</div>
+</div>
+<div class="mt-4 flex gap-1 h-8 items-end">
+<div class="w-1 bg-error/10 h-1/2 rounded-full"></div>
+<div class="w-1 bg-error/20 h-3/4 rounded-full"></div>
+<div class="w-1 bg-error/10 h-1/3 rounded-full"></div>
+<div class="w-1 bg-error h-full rounded-full group-hover:scale-y-110 transition-transform"></div>
+<div class="w-1 bg-error/40 h-2/3 rounded-full"></div>
+</div>
+</div>
+<div class="col-span-1 md:col-span-3 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 relative overflow-hidden">
+<div class="flex justify-between items-start mb-6">
+<div>
+<h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">成绩正态分布趋势</h4>
+<p class="text-[10px] text-slate-400">Current Session vs Historical Average</p>
+</div>
+<div class="flex gap-4">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+<span class="text-[10px] font-bold text-slate-500">本次</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-slate-200"></span>
+<span class="text-[10px] font-bold text-slate-500">往年同期</span>
+</div>
+</div>
+</div>
+<div class="w-full h-24 relative flex items-end gap-2">
+<!-- Abstract bars representing threshold scales -->
+<div class="flex-1 bg-slate-50 h-12 rounded-lg group-hover:bg-slate-100 transition-colors"></div>
+<div class="flex-1 bg-slate-50 h-20 rounded-lg"></div>
+<div class="flex-1 bg-slate-50 h-24 rounded-lg"></div>
+<div class="flex-1 bg-primary/20 h-16 rounded-lg relative overflow-hidden">
+<div class="absolute bottom-0 w-full h-1/2 bg-primary"></div>
+</div>
+<div class="flex-1 bg-primary/20 h-12 rounded-lg"></div>
+<div class="flex-1 bg-slate-50 h-8 rounded-lg"></div>
+<!-- Threshold Lines -->
+<div class="absolute top-1/4 left-0 w-full border-t border-slate-100 border-dashed"></div>
+<div class="absolute top-1/2 left-0 w-full border-t border-slate-100 border-dashed"></div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

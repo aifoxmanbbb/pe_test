@@ -13,4 +13,8 @@ export interface SearchProps {
   inline?: boolean
   removeNoValueItem?: boolean
   model?: Recordable
+  searchButtonCircle?: boolean
+  searchButtonIconOnly?: boolean
+  searchButtonClass?: string
+  searchButtonIcon?: string
 }

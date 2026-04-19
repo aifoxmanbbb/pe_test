@@ -42,6 +42,7 @@ from apps.vadmin.sport.service.rule_engine import RuleEngine
 from apps.vadmin.sport.service.batch_import_service import BatchImportService
 from apps.vadmin.sport.service.standard_import_service import StandardImportService
 from apps.vadmin.sport.service.standard_service import list_standard_with_items
+from apps.vadmin.sport.service.scope_service import match_scope_by_name, is_global_scope
 from utils.response import SuccessResponse, ErrorResponse
 from utils.excel.write_xlsx import WriteXlsx
 
@@ -54,34 +55,16 @@ def _serialize(model_obj, schema_class):
     """
     return json.loads(schema_class.model_validate(model_obj).model_dump_json())
 
-def _scope_tokens(auth: Auth) -> list[str]:
-    if not auth.user or not hasattr(auth.user, 'depts'):
-        return []
-    tokens = []
-    for dept in auth.user.depts:
-        name = getattr(dept, 'name', None)
-        key = getattr(dept, 'dept_key', None)
-        if name:
-            tokens.append(str(name))
-        if key:
-            tokens.append(str(key))
-    return list(set(tokens))
-
-
 def _is_global_scope(auth: Auth) -> bool:
-    return auth.data_range in (None, 4) or '*' in (auth.dept_ids or [])
+    return is_global_scope(auth)
 
 
 def _filter_rows_by_scope(auth: Auth, rows: list[dict[str, Any]], keys: list[str]) -> list[dict[str, Any]]:
     if _is_global_scope(auth):
         return rows
-    tokens = _scope_tokens(auth)
-    if not tokens:
-        return rows
     result = []
     for row in rows:
-        values = [str(row.get(k, '')) for k in keys]
-        if any((tk in val) or (val in tk) for tk in tokens for val in values if val):
+        if match_scope_by_name(auth, row.get('school_name') or row.get('school'), row.get('class_name')):
             result.append(row)
     return result
 
@@ -91,13 +74,7 @@ def _can_access_row(auth: Auth, row: dict[str, Any], keys: list[str]) -> bool:
 
 
 def _in_scope(auth: Auth, school_name: str | None, class_name: str | None) -> bool:
-    if _is_global_scope(auth):
-        return True
-    tokens = _scope_tokens(auth)
-    if not tokens:
-        return True
-    values = [str(school_name or ''), str(class_name or '')]
-    return any((tk in val) or (val in tk) for tk in tokens for val in values if val)
+    return match_scope_by_name(auth, school_name, class_name)
 
 
 async def _get_self_student_context(db, telephone: str | None, user_id: int | None = None) -> dict[str, Any] | None:
@@ -208,6 +185,39 @@ def _rows_item_avg_raw(rows: list[VadminSportScore], item_code: str) -> float:
     if not item_code:
         return 0.0
     return avg([to_float(r.raw_score) for r in rows if r.item_code == item_code])
+
+
+def _item_columns(rows: list[VadminSportScore]) -> list[dict[str, str]]:
+    seen: set[str] = set()
+    columns: list[dict[str, str]] = []
+    for row in rows:
+        if not row.item_code or row.item_code in seen:
+            continue
+        seen.add(row.item_code)
+        columns.append({
+            'item_code': row.item_code,
+            'item_name': row.item_name or row.item_code
+        })
+    return columns
+
+
+def _item_detail_cells(rows: list[VadminSportScore], columns: list[dict[str, str]], include_rate: bool = False) -> list[dict[str, Any]]:
+    item_map = {r.item_code: r for r in rows}
+    cells: list[dict[str, Any]] = []
+    for col in columns:
+        row = item_map.get(col['item_code'])
+        rate_text = ''
+        if include_rate:
+            rate = _rate([r for r in rows if r.item_code == col['item_code']])
+            rate_text = build_rate_text(rate['pass_rate'], rate['excellent_rate'], rate['full_rate'])
+        cells.append({
+            'item_code': col['item_code'],
+            'item_name': col['item_name'],
+            'raw_score': format_score(to_float(row.raw_score) if row else None),
+            'score_value': round2(to_float(row.score_value)) if row else 0.0,
+            'rate_text': rate_text
+        })
+    return cells
 
 
 def _rate(rows: list[VadminSportScore]) -> dict[str, float]:
@@ -427,6 +437,7 @@ async def get_overview(
 
     class_groups = group_scores_by_class(current_rows)
     slots, _slot_name_map = _fitness_slots(current_rows)
+    detail_columns = _item_columns(current_rows)
     class_list = []
     for (school, cls), rows in sorted(class_groups.items(), key=lambda x: (x[0][0], x[0][1])):
         bmi_rows = [r for r in rows if r.item_code == slots['bmi']]
@@ -443,7 +454,8 @@ async def get_overview(
             'lung_rate': build_rate_text(_rate(lung_rows)['pass_rate'], _rate(lung_rows)['excellent_rate'], _rate(lung_rows)['full_rate']),
             'sprint_score': format_score(_rows_item_avg_raw(rows, slots['sprint'])),
             'sprint_point': _rows_item_avg_score(rows, slots['sprint']),
-            'sprint_rate': build_rate_text(_rate(sprint_rows)['pass_rate'], _rate(sprint_rows)['excellent_rate'], _rate(sprint_rows)['full_rate'])
+            'sprint_rate': build_rate_text(_rate(sprint_rows)['pass_rate'], _rate(sprint_rows)['excellent_rate'], _rate(sprint_rows)['full_rate']),
+            'items': _item_detail_cells(rows, detail_columns, True)
         })
 
     data = {
@@ -463,6 +475,7 @@ async def get_overview(
             'batches': [b.batch_name for b in trend_batches],
             'series': item_trend_series
         },
+        'detail_columns': detail_columns,
         'class_list': class_list
     }
     data['class_list'] = _filter_rows_by_scope(auth, data['class_list'], ['school_name', 'class_name'])
@@ -923,15 +936,11 @@ async def get_class_analysis(
     for row in current_rows:
         item_name_map.setdefault(row.item_code, row.item_name)
 
+    detail_columns = _item_columns(current_rows)
     rank_data = []
     slots, _slot_names = _fitness_slots(current_rows)
     for student_no, s_rows in by_student.items():
         item_map = {r.item_code: r for r in s_rows}
-        bmi_row = item_map.get(slots['bmi'])
-        lung_row = item_map.get(slots['lung'])
-        sprint_row = item_map.get(slots['sprint'])
-        sit_row = item_map.get(slots['sit'])
-        rope_row = item_map.get(slots['rope'])
         avg_score = avg([to_float(r.score_value) for r in s_rows])
         first = s_rows[0]
         comment = next((r.teacher_comment for r in s_rows if r.teacher_comment), '')
@@ -939,18 +948,9 @@ async def get_class_analysis(
             'student_name': first.student_name,
             'gender': first.gender,
             'student_no': student_no,
-            'bmi_score': format_score(to_float(bmi_row.raw_score) if bmi_row else None),
-            'bmi_point': round2(to_float(bmi_row.score_value)) if bmi_row else 0.0,
-            'lung_score': format_score(to_float(lung_row.raw_score) if lung_row else None),
-            'lung_point': round2(to_float(lung_row.score_value)) if lung_row else 0.0,
-            'sprint_score': format_score(to_float(sprint_row.raw_score) if sprint_row else None),
-            'sprint_point': round2(to_float(sprint_row.score_value)) if sprint_row else 0.0,
-            'sit_score': format_score(to_float(sit_row.raw_score) if sit_row else None),
-            'sit_point': round2(to_float(sit_row.score_value)) if sit_row else 0.0,
-            'rope_score': format_score(to_float(rope_row.raw_score) if rope_row else None),
-            'rope_point': round2(to_float(rope_row.score_value)) if rope_row else 0.0,
             'teacher_comment': comment,
-            'avg_score': avg_score
+            'avg_score': avg_score,
+            'items': _item_detail_cells(s_rows, detail_columns, False)
         })
 
     rank_data = sorted(rank_data, key=lambda x: x['avg_score'], reverse=True)
@@ -1008,6 +1008,7 @@ async def get_class_analysis(
             'excellent_rate': current_excellent,
             'full_rate': current_full
         },
+        'detail_columns': detail_columns,
         'rank_list': rank_data
     }
     return SuccessResponse(data)
@@ -1125,6 +1126,7 @@ async def get_grade_analysis(
     class_history_series = [{'name': cls, 'values': values} for cls, values in history_by_batch_class.items()]
 
     slots, _slot_names = _fitness_slots(current_rows)
+    detail_columns = _item_columns(current_rows)
     class_list = []
     for cls in class_names:
         rows = class_groups[cls]
@@ -1141,7 +1143,8 @@ async def get_grade_analysis(
             'lung_rate': build_rate_text(_rate(lung_rows)['pass_rate'], _rate(lung_rows)['excellent_rate'], _rate(lung_rows)['full_rate']),
             'sprint_score': format_score(_rows_item_avg_raw(rows, slots['sprint'])),
             'sprint_point': _rows_item_avg_score(rows, slots['sprint']),
-            'sprint_rate': build_rate_text(_rate(sprint_rows)['pass_rate'], _rate(sprint_rows)['excellent_rate'], _rate(sprint_rows)['full_rate'])
+            'sprint_rate': build_rate_text(_rate(sprint_rows)['pass_rate'], _rate(sprint_rows)['excellent_rate'], _rate(sprint_rows)['full_rate']),
+            'items': _item_detail_cells(rows, detail_columns, True)
         })
 
     data = {
@@ -1157,6 +1160,7 @@ async def get_grade_analysis(
             'batches': [b.batch_name for b in history_batches],
             'series': class_history_series
         },
+        'detail_columns': detail_columns,
         'class_list': class_list
     }
     return SuccessResponse(data)
@@ -1551,6 +1555,13 @@ async def get_student_options(
             )
         )
     rows = (await auth.db.scalars(sql)).all()
+    if not _is_global_scope(auth):
+        if auth.class_ids:
+            class_scope = set(auth.class_ids)
+            rows = [r for r in rows if r.class_id in class_scope]
+        elif auth.school_ids:
+            school_scope = set(auth.school_ids)
+            rows = [r for r in rows if r.school_id in school_scope]
     if student_keyword:
         kw = str(student_keyword).strip()
         if kw:

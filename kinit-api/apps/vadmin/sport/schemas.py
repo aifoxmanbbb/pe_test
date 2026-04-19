@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 from typing import Optional
 from core.data_types import Telephone
@@ -15,6 +15,8 @@ class SchoolOut(BaseModel):
     stage_types: Optional[str] = None
     sort: int
     is_active: bool
+    leader_user_ids: list[int] = Field(default_factory=list)
+    leader_names: list[str] = Field(default_factory=list)
     create_datetime: datetime
 
 class GradeOut(BaseModel):
@@ -39,6 +41,8 @@ class ClassOut(BaseModel):
     class_code: Optional[str] = None
     sort: int
     is_active: bool
+    coach_user_ids: list[int] = Field(default_factory=list)
+    coach_names: list[str] = Field(default_factory=list)
     create_datetime: datetime
 
 class StudentOut(BaseModel):
@@ -76,6 +80,60 @@ class StudentIn(StudentBase):
 
 
 class StudentUpdate(StudentBase):
+    pass
+
+
+class SchoolBase(BaseModel):
+    school_name: str
+    school_code: Optional[str] = None
+    region: Optional[str] = None
+    stage_types: Optional[str | list[str]] = None
+    sort: int = 0
+    is_active: bool = True
+    leader_user_ids: list[int] = Field(default_factory=list)
+
+
+class SchoolIn(SchoolBase):
+    pass
+
+
+class SchoolUpdate(SchoolBase):
+    pass
+
+
+class GradeBase(BaseModel):
+    school_id: int
+    grade_name: str
+    grade_code: Optional[str] = None
+    sort: int = 0
+    is_active: bool = True
+    remark: Optional[str] = None
+
+
+class GradeIn(GradeBase):
+    pass
+
+
+class GradeUpdate(GradeBase):
+    pass
+
+
+class ClassBase(BaseModel):
+    school_id: int
+    grade_id: int
+    class_name: str
+    class_code: Optional[str] = None
+    sort: int = 0
+    is_active: bool = True
+    remark: Optional[str] = None
+    coach_user_ids: list[int] = Field(default_factory=list)
+
+
+class ClassIn(ClassBase):
+    pass
+
+
+class ClassUpdate(ClassBase):
     pass
 
 class BatchOut(BaseModel):

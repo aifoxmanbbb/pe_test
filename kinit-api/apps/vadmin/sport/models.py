@@ -2,8 +2,38 @@
 # -*- coding: utf-8 -*-
 
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Integer, BigInteger, Date, DateTime, DECIMAL, Boolean, ForeignKey, JSON, UniqueConstraint
+from sqlalchemy import (
+    String,
+    Integer,
+    BigInteger,
+    Date,
+    DateTime,
+    DECIMAL,
+    Boolean,
+    ForeignKey,
+    JSON,
+    UniqueConstraint,
+    Table,
+    Column
+)
 from db.db_base import BaseModel
+from core.database import Base
+
+
+vadmin_pef_school_leaders = Table(
+    "vadmin_pef_school_leaders",
+    Base.metadata,
+    Column("school_id", Integer, ForeignKey("vadmin_pef_school.id", ondelete="CASCADE")),
+    Column("user_id", Integer, ForeignKey("vadmin_auth_user.id", ondelete="CASCADE"))
+)
+
+
+vadmin_pef_class_coaches = Table(
+    "vadmin_pef_class_coaches",
+    Base.metadata,
+    Column("class_id", Integer, ForeignKey("vadmin_pef_class.id", ondelete="CASCADE")),
+    Column("user_id", Integer, ForeignKey("vadmin_auth_user.id", ondelete="CASCADE"))
+)
 
 class VadminSportStandard(BaseModel):
     __tablename__ = "vadmin_pef_standard"

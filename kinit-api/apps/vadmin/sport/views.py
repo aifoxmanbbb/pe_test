@@ -9,7 +9,20 @@ from apps.vadmin.auth.utils.current import FullAdminAuth
 from apps.vadmin.auth.utils.validation.auth import Auth
 from application import settings
 from utils.response import SuccessResponse, ErrorResponse
-from .models import VadminPefSchool, VadminPefGrade, VadminPefClass, VadminPefStudent, VadminSportStandardItem
+from .models import (
+    VadminPefSchool,
+    VadminPefGrade,
+    VadminPefClass,
+    VadminPefStudent,
+    VadminSportStandardItem,
+    vadmin_pef_school_leaders,
+    vadmin_pef_class_coaches
+)
+from .service.scope_service import (
+    ROLE_SCHOOL_LEADER,
+    ROLE_TEACHER_COACH,
+    is_global_scope
+)
 from . import schemas
 import traceback
 import json
@@ -21,6 +34,10 @@ STUDENT_ROLE_KEY = 'student_parent'
 STUDENT_ROLE_NAME = '家长'
 STUDENT_ROOT_PERM = 'sport.student'
 STUDENT_SCORE_PERM = 'sport.student.scores'
+SCHOOL_PERM = 'sport.foundation.school'
+GRADE_PERM = 'sport.foundation.grade'
+CLASS_PERM = 'sport.foundation.class'
+STUDENT_PERM = 'sport.foundation.student'
 
 
 def _normalize_stage_types(value) -> str:
@@ -60,6 +77,187 @@ def _normalize_auth_gender(value: str | int | None) -> str:
     if text in {'0', 'female', 'f', '女', '2'}:
         return '0'
     return '0'
+
+
+def _has_role(auth: Auth, role_key: str) -> bool:
+    return role_key in (auth.role_keys or [])
+
+
+def _can_manage_school(auth: Auth) -> bool:
+    return is_global_scope(auth)
+
+
+def _can_manage_grade(auth: Auth) -> bool:
+    return is_global_scope(auth) or _has_role(auth, ROLE_SCHOOL_LEADER)
+
+
+def _can_manage_class(auth: Auth) -> bool:
+    return is_global_scope(auth) or _has_role(auth, ROLE_SCHOOL_LEADER)
+
+
+def _can_manage_student(auth: Auth) -> bool:
+    return is_global_scope(auth) or _has_role(auth, ROLE_SCHOOL_LEADER) or _has_role(auth, ROLE_TEACHER_COACH)
+
+
+def _school_id_in_scope(auth: Auth, school_id: int | None) -> bool:
+    if school_id is None:
+        return False
+    if is_global_scope(auth):
+        return True
+    return school_id in set(auth.school_ids or [])
+
+
+def _class_id_in_scope(auth: Auth, class_id: int | None) -> bool:
+    if class_id is None:
+        return False
+    if is_global_scope(auth):
+        return True
+    return class_id in set(auth.class_ids or [])
+
+
+def _grade_visible(auth: Auth, school_id: int) -> bool:
+    return _school_id_in_scope(auth, school_id)
+
+
+def _class_visible(auth: Auth, school_id: int, class_id: int) -> bool:
+    if is_global_scope(auth):
+        return True
+    if _has_role(auth, ROLE_TEACHER_COACH):
+        return _class_id_in_scope(auth, class_id)
+    return _school_id_in_scope(auth, school_id)
+
+
+def _student_visible(auth: Auth, school_id: int, class_id: int) -> bool:
+    return _class_visible(auth, school_id, class_id)
+
+
+async def _get_school_leader_map(db, school_ids: list[int]) -> tuple[dict[int, list[int]], dict[int, list[str]]]:
+    if not school_ids:
+        return {}, {}
+    rows = (await db.execute(
+        select(vadmin_pef_school_leaders.c.school_id, VadminUser.id, VadminUser.name)
+        .select_from(vadmin_pef_school_leaders)
+        .join(VadminUser, VadminUser.id == vadmin_pef_school_leaders.c.user_id)
+        .where(
+            vadmin_pef_school_leaders.c.school_id.in_(school_ids),
+            VadminUser.is_delete == false()
+        )
+        .order_by(vadmin_pef_school_leaders.c.school_id.asc(), VadminUser.id.asc())
+    )).all()
+    id_map: dict[int, list[int]] = {}
+    name_map: dict[int, list[str]] = {}
+    for school_id, user_id, user_name in rows:
+        id_map.setdefault(int(school_id), []).append(int(user_id))
+        if user_name:
+            name_map.setdefault(int(school_id), []).append(str(user_name))
+    return id_map, name_map
+
+
+async def _get_class_coach_map(db, class_ids: list[int]) -> tuple[dict[int, list[int]], dict[int, list[str]]]:
+    if not class_ids:
+        return {}, {}
+    rows = (await db.execute(
+        select(vadmin_pef_class_coaches.c.class_id, VadminUser.id, VadminUser.name)
+        .select_from(vadmin_pef_class_coaches)
+        .join(VadminUser, VadminUser.id == vadmin_pef_class_coaches.c.user_id)
+        .where(
+            vadmin_pef_class_coaches.c.class_id.in_(class_ids),
+            VadminUser.is_delete == false()
+        )
+        .order_by(vadmin_pef_class_coaches.c.class_id.asc(), VadminUser.id.asc())
+    )).all()
+    id_map: dict[int, list[int]] = {}
+    name_map: dict[int, list[str]] = {}
+    for class_id, user_id, user_name in rows:
+        id_map.setdefault(int(class_id), []).append(int(user_id))
+        if user_name:
+            name_map.setdefault(int(class_id), []).append(str(user_name))
+    return id_map, name_map
+
+
+async def _sync_school_leaders(db, school_id: int, leader_user_ids: list[int] | None):
+    target_ids = sorted({int(user_id) for user_id in (leader_user_ids or []) if user_id})
+    await db.execute(vadmin_pef_school_leaders.delete().where(
+        vadmin_pef_school_leaders.c.school_id == school_id
+    ))
+    if target_ids:
+        await db.execute(vadmin_pef_school_leaders.insert(), [
+            {'school_id': school_id, 'user_id': user_id} for user_id in target_ids
+        ])
+
+
+async def _sync_class_coaches(db, class_id: int, coach_user_ids: list[int] | None):
+    target_ids = sorted({int(user_id) for user_id in (coach_user_ids or []) if user_id})
+    await db.execute(vadmin_pef_class_coaches.delete().where(
+        vadmin_pef_class_coaches.c.class_id == class_id
+    ))
+    if target_ids:
+        await db.execute(vadmin_pef_class_coaches.insert(), [
+            {'class_id': class_id, 'user_id': user_id} for user_id in target_ids
+        ])
+
+
+async def _load_school_or_none(db, school_id: int | None) -> VadminPefSchool | None:
+    if not school_id:
+        return None
+    return await db.scalar(select(VadminPefSchool).where(
+        VadminPefSchool.id == school_id,
+        VadminPefSchool.is_delete == false()
+    ))
+
+
+async def _load_grade_or_none(db, grade_id: int | None) -> VadminPefGrade | None:
+    if not grade_id:
+        return None
+    return await db.scalar(select(VadminPefGrade).where(
+        VadminPefGrade.id == grade_id,
+        VadminPefGrade.is_delete == false()
+    ))
+
+
+async def _load_class_or_none(db, class_id: int | None) -> VadminPefClass | None:
+    if not class_id:
+        return None
+    return await db.scalar(select(VadminPefClass).where(
+        VadminPefClass.id == class_id,
+        VadminPefClass.is_delete == false()
+    ))
+
+
+async def _validate_leader_users(db, leader_user_ids: list[int]) -> bool:
+    if not leader_user_ids:
+        return True
+    role_rows = (await db.execute(
+        select(VadminUser.id)
+        .select_from(VadminUser)
+        .join(auth_models.vadmin_auth_user_roles, auth_models.vadmin_auth_user_roles.c.user_id == VadminUser.id)
+        .join(VadminRole, VadminRole.id == auth_models.vadmin_auth_user_roles.c.role_id)
+        .where(
+            VadminUser.is_delete == false(),
+            VadminUser.is_staff == true(),
+            VadminRole.role_key == ROLE_SCHOOL_LEADER,
+            VadminUser.id.in_(leader_user_ids)
+        )
+    )).all()
+    return len({int(row.id) for row in role_rows}) == len(set(leader_user_ids))
+
+
+async def _validate_coach_users(db, coach_user_ids: list[int]) -> bool:
+    if not coach_user_ids:
+        return True
+    role_rows = (await db.execute(
+        select(VadminUser.id)
+        .select_from(VadminUser)
+        .join(auth_models.vadmin_auth_user_roles, auth_models.vadmin_auth_user_roles.c.user_id == VadminUser.id)
+        .join(VadminRole, VadminRole.id == auth_models.vadmin_auth_user_roles.c.role_id)
+        .where(
+            VadminUser.is_delete == false(),
+            VadminUser.is_staff == true(),
+            VadminRole.role_key == ROLE_TEACHER_COACH,
+            VadminUser.id.in_(coach_user_ids)
+        )
+    )).all()
+    return len({int(row.id) for row in role_rows}) == len(set(coach_user_ids))
 
 
 async def _ensure_student_menu_role(db):
@@ -270,6 +468,8 @@ async def _sync_student_login_user(
 @app.get("/options/schools", summary="学校选项")
 async def get_school_options(stage_type: str = Query(None), auth: Auth = Depends(FullAdminAuth())):
     sql = select(VadminPefSchool).where(VadminPefSchool.is_delete == false(), VadminPefSchool.is_active == true())
+    if not is_global_scope(auth):
+        sql = sql.where(VadminPefSchool.id.in_(auth.school_ids or [-1]))
     if stage_type:
         sql = sql.where(
             or_(
@@ -291,6 +491,8 @@ async def get_school_options(stage_type: str = Query(None), auth: Auth = Depends
 @app.get("/options/grades", summary="年级选项")
 async def get_grade_options(school_id: int = Query(None), school_name: str = Query(None), auth: Auth = Depends(FullAdminAuth())):
     sql = select(VadminPefGrade).where(VadminPefGrade.is_delete == false(), VadminPefGrade.is_active == true())
+    if not is_global_scope(auth):
+        sql = sql.where(VadminPefGrade.school_id.in_(auth.school_ids or [-1]))
     if school_id:
         sql = sql.where(VadminPefGrade.school_id == school_id)
     if school_name:
@@ -308,6 +510,11 @@ async def get_class_options(
 ):
     sql = select(VadminPefClass).where(VadminPefClass.is_delete == false(), VadminPefClass.is_active == true())
     joined_school = False
+    if not is_global_scope(auth):
+        if _has_role(auth, ROLE_TEACHER_COACH):
+            sql = sql.where(VadminPefClass.id.in_(auth.class_ids or [-1]))
+        else:
+            sql = sql.where(VadminPefClass.school_id.in_(auth.school_ids or [-1]))
     if grade_id:
         sql = sql.where(VadminPefClass.grade_id == grade_id)
     if school_id:
@@ -322,6 +529,55 @@ async def get_class_options(
         sql = sql.where(VadminPefSchool.school_name == school_name)
     items = (await auth.db.scalars(sql)).all()
     return SuccessResponse([{"label": i.class_name, "value": i.id, "class_name": i.class_name} for i in items])
+
+@app.get("/options/users/leaders", summary="校领导选项")
+async def get_school_leader_options(auth: Auth = Depends(FullAdminAuth(permissions=[SCHOOL_PERM]))):
+    sql = (
+        select(VadminUser)
+        .join(auth_models.vadmin_auth_user_roles, auth_models.vadmin_auth_user_roles.c.user_id == VadminUser.id)
+        .join(VadminRole, VadminRole.id == auth_models.vadmin_auth_user_roles.c.role_id)
+        .where(
+            VadminUser.is_delete == false(),
+            VadminUser.is_staff == true(),
+            VadminRole.is_delete == false(),
+            VadminRole.role_key == ROLE_SCHOOL_LEADER
+        )
+        .order_by(VadminUser.id.asc())
+    )
+    items = (await auth.db.scalars(sql)).all()
+    return SuccessResponse([
+        {
+            "label": f"{item.name} ({item.telephone})",
+            "value": item.id,
+            "name": item.name,
+            "telephone": item.telephone
+        } for item in items
+    ])
+
+
+@app.get("/options/users/coaches", summary="老师教练选项")
+async def get_teacher_coach_options(auth: Auth = Depends(FullAdminAuth(permissions=[CLASS_PERM]))):
+    sql = (
+        select(VadminUser)
+        .join(auth_models.vadmin_auth_user_roles, auth_models.vadmin_auth_user_roles.c.user_id == VadminUser.id)
+        .join(VadminRole, VadminRole.id == auth_models.vadmin_auth_user_roles.c.role_id)
+        .where(
+            VadminUser.is_delete == false(),
+            VadminUser.is_staff == true(),
+            VadminRole.is_delete == false(),
+            VadminRole.role_key == ROLE_TEACHER_COACH
+        )
+        .order_by(VadminUser.id.asc())
+    )
+    items = (await auth.db.scalars(sql)).all()
+    return SuccessResponse([
+        {
+            "label": f"{item.name} ({item.telephone})",
+            "value": item.id,
+            "name": item.name,
+            "telephone": item.telephone
+        } for item in items
+    ])
 
 @app.get("/options/standard/items", summary="标准项目选项")
 async def get_standard_item_options(standard_id: int = Query(...), auth: Auth = Depends(FullAdminAuth())):
@@ -342,33 +598,60 @@ async def get_standard_item_options(standard_id: int = Query(...), auth: Auth = 
 # ─── 学校管理 ─────────────────────────────────────────────
 
 @app.get("/school/list", summary="学校列表")
-async def get_school_list(auth: Auth = Depends(FullAdminAuth())):
+async def get_school_list(auth: Auth = Depends(FullAdminAuth(permissions=[SCHOOL_PERM]))):
+    if not _can_manage_school(auth):
+        return ErrorResponse("无权限操作")
     sql = select(VadminPefSchool).where(VadminPefSchool.is_delete == false()).order_by(VadminPefSchool.sort.asc())
     queryset = await auth.db.scalars(sql)
-    return SuccessResponse([_serialize(i, schemas.SchoolOut) for i in queryset.all()])
+    rows = queryset.all()
+    leader_ids_map, leader_names_map = await _get_school_leader_map(auth.db, [item.id for item in rows])
+    data = []
+    for item in rows:
+        row = _serialize(item, schemas.SchoolOut)
+        row["leader_user_ids"] = leader_ids_map.get(item.id, [])
+        row["leader_names"] = leader_names_map.get(item.id, [])
+        data.append(row)
+    return SuccessResponse(data)
 
 @app.post("/school", summary="创建学校")
-async def create_school(data: dict = Body(...), auth: Auth = Depends(FullAdminAuth())):
-    data['stage_types'] = _normalize_stage_types(data.get('stage_types'))
-    obj = VadminPefSchool(**data)
+async def create_school(data: schemas.SchoolIn = Body(...), auth: Auth = Depends(FullAdminAuth(permissions=[SCHOOL_PERM]))):
+    if not _can_manage_school(auth):
+        return ErrorResponse("无权限操作")
+    payload = data.model_dump()
+    payload['stage_types'] = _normalize_stage_types(payload.get('stage_types'))
+    leader_user_ids = payload.pop('leader_user_ids', [])
+    if not await _validate_leader_users(auth.db, leader_user_ids):
+        return ErrorResponse("存在无效的校领导账号")
+    obj = VadminPefSchool(**payload)
     auth.db.add(obj)
     await auth.db.flush()
+    await _sync_school_leaders(auth.db, obj.id, leader_user_ids)
     return SuccessResponse("创建成功")
 
 @app.put("/school/{id}", summary="更新学校")
-async def update_school(id: int, data: dict = Body(...), auth: Auth = Depends(FullAdminAuth())):
+async def update_school(id: int, data: schemas.SchoolUpdate = Body(...), auth: Auth = Depends(FullAdminAuth(permissions=[SCHOOL_PERM]))):
+    if not _can_manage_school(auth):
+        return ErrorResponse("无权限操作")
     obj = await auth.db.get(VadminPefSchool, id)
-    if not obj: return ErrorResponse("学校不存在")
-    if 'stage_types' in data:
-        data['stage_types'] = _normalize_stage_types(data.get('stage_types'))
-    for k, v in data.items(): setattr(obj, k, v)
+    if not obj:
+        return ErrorResponse("学校不存在")
+    payload = data.model_dump()
+    payload['stage_types'] = _normalize_stage_types(payload.get('stage_types'))
+    leader_user_ids = payload.pop('leader_user_ids', [])
+    if not await _validate_leader_users(auth.db, leader_user_ids):
+        return ErrorResponse("存在无效的校领导账号")
+    for k, v in payload.items():
+        setattr(obj, k, v)
     await auth.db.flush()
+    await _sync_school_leaders(auth.db, obj.id, leader_user_ids)
     return SuccessResponse("更新成功")
 
 # ─── 年级管理 ─────────────────────────────────────────────
 
 @app.get("/grade/list", summary="年级列表")
-async def get_grade_list(auth: Auth = Depends(FullAdminAuth())):
+async def get_grade_list(auth: Auth = Depends(FullAdminAuth(permissions=[GRADE_PERM]))):
+    if not _can_manage_grade(auth):
+        return ErrorResponse("无权限操作")
     sql = select(VadminPefGrade, VadminPefSchool.school_name)\
         .select_from(VadminPefGrade)\
         .join(VadminPefSchool, VadminPefGrade.school_id == VadminPefSchool.id)\
@@ -376,52 +659,113 @@ async def get_grade_list(auth: Auth = Depends(FullAdminAuth())):
     result = await auth.db.execute(sql)
     data = []
     for grade, school_name in result.all():
+        if not _grade_visible(auth, grade.school_id):
+            continue
         data.append(_serialize(grade, schemas.GradeOut, school_name=school_name))
     return SuccessResponse(data)
 
 @app.post("/grade", summary="创建年级")
-async def create_grade(data: dict = Body(...), auth: Auth = Depends(FullAdminAuth())):
-    grade = VadminPefGrade(**data)
+async def create_grade(data: schemas.GradeIn = Body(...), auth: Auth = Depends(FullAdminAuth(permissions=[GRADE_PERM]))):
+    if not _can_manage_grade(auth):
+        return ErrorResponse("无权限操作")
+    school = await _load_school_or_none(auth.db, data.school_id)
+    if not school:
+        return ErrorResponse("学校不存在")
+    if not _school_id_in_scope(auth, school.id):
+        return ErrorResponse("无权限操作该学校")
+    grade = VadminPefGrade(**data.model_dump())
     auth.db.add(grade)
     await auth.db.flush()
     return SuccessResponse("创建成功")
 
 @app.put("/grade/{id}", summary="更新年级")
-async def update_grade(id: int, data: dict = Body(...), auth: Auth = Depends(FullAdminAuth())):
+async def update_grade(id: int, data: schemas.GradeUpdate = Body(...), auth: Auth = Depends(FullAdminAuth(permissions=[GRADE_PERM]))):
+    if not _can_manage_grade(auth):
+        return ErrorResponse("无权限操作")
     grade = await auth.db.get(VadminPefGrade, id)
-    if not grade: return ErrorResponse("数据不存在")
-    for k, v in data.items(): setattr(grade, k, v)
+    if not grade:
+        return ErrorResponse("数据不存在")
+    old_school = await _load_school_or_none(auth.db, grade.school_id)
+    new_school = await _load_school_or_none(auth.db, data.school_id)
+    if not old_school or not new_school:
+        return ErrorResponse("学校不存在")
+    if (not _school_id_in_scope(auth, old_school.id)) or (not _school_id_in_scope(auth, new_school.id)):
+        return ErrorResponse("无权限操作该学校")
+    for k, v in data.model_dump().items():
+        setattr(grade, k, v)
     await auth.db.flush()
     return SuccessResponse("更新成功")
 
 # ─── 班级管理 ─────────────────────────────────────────────
 
 @app.get("/class/list", summary="班级列表")
-async def get_class_list(auth: Auth = Depends(FullAdminAuth())):
+async def get_class_list(auth: Auth = Depends(FullAdminAuth(permissions=[CLASS_PERM]))):
+    if not _can_manage_class(auth):
+        return ErrorResponse("无权限操作")
     sql = select(VadminPefClass, VadminPefSchool.school_name, VadminPefGrade.grade_name)\
         .select_from(VadminPefClass)\
         .join(VadminPefSchool, VadminPefClass.school_id == VadminPefSchool.id)\
         .join(VadminPefGrade, VadminPefClass.grade_id == VadminPefGrade.id)\
         .where(VadminPefClass.is_delete == false())
     result = await auth.db.execute(sql)
+    rows = result.all()
+    coach_ids_map, coach_names_map = await _get_class_coach_map(auth.db, [row[0].id for row in rows])
     data = []
-    for obj, school_name, grade_name in result.all():
-        data.append(_serialize(obj, schemas.ClassOut, school_name=school_name, grade_name=grade_name))
+    for obj, school_name, grade_name in rows:
+        if not _class_visible(auth, obj.school_id, obj.id):
+            continue
+        row = _serialize(obj, schemas.ClassOut, school_name=school_name, grade_name=grade_name)
+        row["coach_user_ids"] = coach_ids_map.get(obj.id, [])
+        row["coach_names"] = coach_names_map.get(obj.id, [])
+        data.append(row)
     return SuccessResponse(data)
 
 @app.post("/class", summary="创建班级")
-async def create_class(data: dict = Body(...), auth: Auth = Depends(FullAdminAuth())):
-    obj = VadminPefClass(**data)
+async def create_class(data: schemas.ClassIn = Body(...), auth: Auth = Depends(FullAdminAuth(permissions=[CLASS_PERM]))):
+    if not _can_manage_class(auth):
+        return ErrorResponse("无权限操作")
+    school = await _load_school_or_none(auth.db, data.school_id)
+    grade = await _load_grade_or_none(auth.db, data.grade_id)
+    if not school or not grade:
+        return ErrorResponse("学校或年级不存在")
+    if grade.school_id != school.id:
+        return ErrorResponse("年级与学校不匹配")
+    if not _school_id_in_scope(auth, school.id):
+        return ErrorResponse("无权限操作该学校")
+    payload = data.model_dump()
+    coach_user_ids = payload.pop("coach_user_ids", [])
+    if not await _validate_coach_users(auth.db, coach_user_ids):
+        return ErrorResponse("存在无效的老师教练账号")
+    obj = VadminPefClass(**payload)
     auth.db.add(obj)
     await auth.db.flush()
+    await _sync_class_coaches(auth.db, obj.id, coach_user_ids)
     return SuccessResponse("创建成功")
 
 @app.put("/class/{id}", summary="更新班级")
-async def update_class(id: int, data: dict = Body(...), auth: Auth = Depends(FullAdminAuth())):
+async def update_class(id: int, data: schemas.ClassUpdate = Body(...), auth: Auth = Depends(FullAdminAuth(permissions=[CLASS_PERM]))):
+    if not _can_manage_class(auth):
+        return ErrorResponse("无权限操作")
     obj = await auth.db.get(VadminPefClass, id)
-    if not obj: return ErrorResponse("数据不存在")
-    for k, v in data.items(): setattr(obj, k, v)
+    if not obj:
+        return ErrorResponse("数据不存在")
+    old_school = await _load_school_or_none(auth.db, obj.school_id)
+    new_school = await _load_school_or_none(auth.db, data.school_id)
+    grade = await _load_grade_or_none(auth.db, data.grade_id)
+    if not old_school or not new_school or not grade:
+        return ErrorResponse("学校或年级不存在")
+    if grade.school_id != new_school.id:
+        return ErrorResponse("年级与学校不匹配")
+    if (not _school_id_in_scope(auth, old_school.id)) or (not _school_id_in_scope(auth, new_school.id)):
+        return ErrorResponse("无权限操作该学校")
+    payload = data.model_dump()
+    coach_user_ids = payload.pop("coach_user_ids", [])
+    if not await _validate_coach_users(auth.db, coach_user_ids):
+        return ErrorResponse("存在无效的老师教练账号")
+    for k, v in payload.items():
+        setattr(obj, k, v)
     await auth.db.flush()
+    await _sync_class_coaches(auth.db, obj.id, coach_user_ids)
     return SuccessResponse("更新成功")
 
 # ─── 学生管理 ─────────────────────────────────────────────
@@ -437,8 +781,10 @@ async def get_student_list(
     grade_name: str = Query(None),
     class_id: int = Query(None),
     class_name: str = Query(None),
-    auth: Auth = Depends(FullAdminAuth())
+    auth: Auth = Depends(FullAdminAuth(permissions=[STUDENT_PERM]))
 ):
+    if not _can_manage_student(auth):
+        return ErrorResponse("无权限操作")
     sql = select(VadminPefStudent, VadminPefSchool.school_name, VadminPefGrade.grade_name, VadminPefClass.class_name)\
         .select_from(VadminPefStudent)\
         .join(VadminPefSchool, VadminPefStudent.school_id == VadminPefSchool.id)\
@@ -462,7 +808,10 @@ async def get_student_list(
         sql = sql.where(VadminPefClass.class_name == class_name)
     
     result = await auth.db.execute(sql)
-    all_rows = result.all()
+    all_rows = [
+        row for row in result.all()
+        if _student_visible(auth, row[0].school_id, row[0].class_id)
+    ]
     total = len(all_rows)
     paged = all_rows[(page-1)*limit : page*limit]
     
@@ -473,7 +822,18 @@ async def get_student_list(
     return SuccessResponse({"items": data, "total": total})
 
 @app.post("/student", summary="创建学生")
-async def create_student(data: schemas.StudentIn, auth: Auth = Depends(FullAdminAuth())):
+async def create_student(data: schemas.StudentIn, auth: Auth = Depends(FullAdminAuth(permissions=[STUDENT_PERM]))):
+    if not _can_manage_student(auth):
+        return ErrorResponse("无权限操作")
+    school = await _load_school_or_none(auth.db, data.school_id)
+    grade = await _load_grade_or_none(auth.db, data.grade_id)
+    class_obj = await _load_class_or_none(auth.db, data.class_id)
+    if not school or not grade or not class_obj:
+        return ErrorResponse("学校/年级/班级不存在")
+    if grade.school_id != school.id or class_obj.school_id != school.id or class_obj.grade_id != grade.id:
+        return ErrorResponse("学生归属信息不匹配")
+    if not _student_visible(auth, school.id, class_obj.id):
+        return ErrorResponse("无权限操作该学生数据")
     user, error = await _sync_student_login_user(auth.db, None, data)
     if error:
         return ErrorResponse(error)
@@ -485,9 +845,22 @@ async def create_student(data: schemas.StudentIn, auth: Auth = Depends(FullAdmin
     return SuccessResponse("创建成功")
 
 @app.put("/student/{id}", summary="更新学生档案")
-async def update_student(id: int, data: schemas.StudentUpdate, auth: Auth = Depends(FullAdminAuth())):
+async def update_student(id: int, data: schemas.StudentUpdate, auth: Auth = Depends(FullAdminAuth(permissions=[STUDENT_PERM]))):
+    if not _can_manage_student(auth):
+        return ErrorResponse("无权限操作")
     obj = await auth.db.get(VadminPefStudent, id)
-    if not obj: return ErrorResponse("学生不存在")
+    if not obj:
+        return ErrorResponse("学生不存在")
+    old_school = await _load_school_or_none(auth.db, obj.school_id)
+    school = await _load_school_or_none(auth.db, data.school_id)
+    grade = await _load_grade_or_none(auth.db, data.grade_id)
+    class_obj = await _load_class_or_none(auth.db, data.class_id)
+    if not old_school or not school or not grade or not class_obj:
+        return ErrorResponse("学校/年级/班级不存在")
+    if grade.school_id != school.id or class_obj.school_id != school.id or class_obj.grade_id != grade.id:
+        return ErrorResponse("学生归属信息不匹配")
+    if (not _student_visible(auth, old_school.id, obj.class_id)) or (not _student_visible(auth, school.id, class_obj.id)):
+        return ErrorResponse("无权限操作该学生数据")
     user, error = await _sync_student_login_user(auth.db, obj, data)
     if error:
         return ErrorResponse(error)

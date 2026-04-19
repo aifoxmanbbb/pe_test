@@ -44,6 +44,7 @@ from apps.vadmin.sport.service.rule_engine import RuleEngine
 from apps.vadmin.sport.service.batch_import_service import BatchImportService
 from apps.vadmin.sport.service.standard_import_service import StandardImportService
 from apps.vadmin.sport.service.standard_service import list_standard_with_items
+from apps.vadmin.sport.service.scope_service import match_scope_by_name, is_global_scope
 from utils.response import SuccessResponse, ErrorResponse
 
 app = APIRouter()
@@ -56,34 +57,16 @@ PE_FULL_LINE = 50.0
 def _serialize(model_obj, schema_class):
     return json.loads(schema_class.model_validate(model_obj).model_dump_json())
 
-def _scope_tokens(auth: Auth) -> list[str]:
-    if not auth.user or not hasattr(auth.user, 'depts'):
-        return []
-    tokens = []
-    for dept in auth.user.depts:
-        name = getattr(dept, 'name', None)
-        key = getattr(dept, 'dept_key', None)
-        if name:
-            tokens.append(str(name))
-        if key:
-            tokens.append(str(key))
-    return list(set(tokens))
-
-
 def _is_global_scope(auth: Auth) -> bool:
-    return auth.data_range in (None, 4) or '*' in (auth.dept_ids or [])
+    return is_global_scope(auth)
 
 
 def _filter_rows_by_scope(auth: Auth, rows: list[dict[str, Any]], keys: list[str]) -> list[dict[str, Any]]:
     if _is_global_scope(auth):
         return rows
-    tokens = _scope_tokens(auth)
-    if not tokens:
-        return rows
     result = []
     for row in rows:
-        values = [str(row.get(k, '')) for k in keys]
-        if any((tk in val) or (val in tk) for tk in tokens for val in values if val):
+        if match_scope_by_name(auth, row.get('school_name') or row.get('school'), row.get('class_name')):
             result.append(row)
     return result
 
@@ -93,13 +76,7 @@ def _can_access_row(auth: Auth, row: dict[str, Any], keys: list[str]) -> bool:
 
 
 def _in_scope(auth: Auth, school_name: str | None, class_name: str | None) -> bool:
-    if _is_global_scope(auth):
-        return True
-    tokens = _scope_tokens(auth)
-    if not tokens:
-        return True
-    values = [str(school_name or ''), str(class_name or '')]
-    return any((tk in val) or (val in tk) for tk in tokens for val in values if val)
+    return match_scope_by_name(auth, school_name, class_name)
 
 
 async def _get_self_student_context(db, telephone: str | None, user_id: int | None = None) -> dict[str, Any] | None:
@@ -1545,6 +1522,13 @@ async def get_student_options(
             )
         )
     rows = (await auth.db.scalars(sql)).all()
+    if not _is_global_scope(auth):
+        if auth.class_ids:
+            class_scope = set(auth.class_ids)
+            rows = [r for r in rows if r.class_id in class_scope]
+        elif auth.school_ids:
+            school_scope = set(auth.school_ids)
+            rows = [r for r in rows if r.school_id in school_scope]
     if student_keyword:
         kw = str(student_keyword).strip()
         if kw:

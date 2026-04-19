@@ -18,9 +18,10 @@ import {
   ElTabs,
   ElTabPane
 } from 'element-plus'
-import { BaseButton } from '@/components/Button'
 import { getPeStudentAnalysisApi, getPeStudentOptionsApi } from '@/api/vadmin/pe'
 import { getClassOptionsApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/api/vadmin/sport'
+import { useHeaderTheme } from '@/hooks/web/useHeaderTheme'
+import { analysisHeroImages } from '@/constants/cockpit'
 
 defineOptions({ name: 'PEStudentAnalysis' })
 
@@ -33,6 +34,11 @@ const gradeOptions = ref<any[]>([])
 const classOptions = ref<any[]>([])
 const studentOptions = ref<any[]>([])
 const currentSchoolName = ref<string>('')
+
+const headerThemeMap = {
+  mid: { bg: '#140d1f', text: '#f8fafc', hover: 'rgba(245, 158, 11, 0.14)' },
+  high: { bg: '#1b223a', text: '#f8fafc', hover: 'rgba(56, 189, 248, 0.14)' }
+}
 
 const profile = ref<any>(null)
 const stats = ref<any>(null)
@@ -127,6 +133,13 @@ const titleText = computed(() => {
   if (!profile.value) return '某学校-学号-学生 体育项目情况分析'
   return `${profile.value.school || '-'}-${profile.value.student_no || '-'}-${profile.value.student_name || '-'} 体育项目情况分析`
 })
+
+const heroStats = computed(() => [
+  { label: '综合评分', value: Number(comprehensiveScore.value || 0).toFixed(1), suffix: '分' },
+  { label: '历史最高', value: Number(stats.value?.history_max_total || 0).toFixed(1), suffix: '分' },
+  { label: '及格项目', value: Number(stats.value?.pass_items || 0), suffix: '项' },
+  { label: '满分项目', value: Number(stats.value?.full_item_count || 0), suffix: '项' }
+])
 
 const comprehensiveScore = computed(() => Number(stats.value?.latest_total || 0))
 const comprehensiveTotal = computed(() => {
@@ -228,10 +241,6 @@ const onTabChange = async () => {
   await initDefaultQuery()
 }
 
-const exportChart = () => {
-  ElMessage.success('图表导出能力将在下一步对接文件下载。')
-}
-
 const syncSearchValues = async (params: Record<string, any>) => {
   await nextTick()
   await searchRef.value?.setValues(params)
@@ -256,33 +265,64 @@ const initDefaultQuery = async () => {
 onMounted(async () => {
   await initDefaultQuery()
 })
+
+useHeaderTheme(() => stageType.value, headerThemeMap, 'mid')
 </script>
 
 <template>
   <ContentWrap>
-    <ElTabs v-model="stageType" class="mb-10px" @tab-change="onTabChange">
-      <ElTabPane label="初中" name="mid" />
-      <ElTabPane label="高中" name="high" />
-    </ElTabs>
+    <div class="analysis-stage analysis-stage--pe">
+      <ElTabs v-model="stageType" class="analysis-tabs mb-10px" @tab-change="onTabChange">
+        <ElTabPane label="初中" name="mid" />
+        <ElTabPane label="高中" name="high" />
+      </ElTabs>
 
-    <div class="flex items-start gap-10px mb-12px">
-      <Search
-        ref="searchRef"
-        :schema="searchSchema"
-        class="flex-1"
-        @search="(params) => { loadStudentOptions(params); loadData(params) }"
-        @reset="(params) => { loadStudentOptions(params); loadData(params) }"
-      />
-      <BaseButton type="primary" @click="exportChart">导出图表</BaseButton>
-    </div>
+      <div class="analysis-search-shell mb-12px">
+        <Search
+          ref="searchRef"
+          :schema="searchSchema"
+          :show-reset="false"
+          @search="(params) => { loadStudentOptions(params); loadData(params) }"
+          @reset="(params) => { loadStudentOptions(params); loadData(params) }"
+        />
+      </div>
 
-    <ElCard shadow="never" class="analysis-card">
-      <div class="card-title">{{ titleText }}</div>
+      <section class="analysis-hero mb-16px" :style="{ '--analysis-hero-image': `url(${analysisHeroImages.peStudent}) center/cover no-repeat` }">
+        <div class="analysis-hero__copy">
+          <div class="analysis-hero__eyebrow">PE STUDENT ANALYSIS</div>
+          <h1 class="analysis-hero__title">学生 <span>阶段对比</span></h1>
+          <p class="analysis-hero__desc">聚焦单个学生在不同批次中的总分变化、项目起伏和达标状态，直接看到训练效果是否持续抬升。</p>
+          <div class="analysis-hero__meta">
+            <div class="analysis-hero__pill">{{ titleText }}</div>
+            <div class="analysis-hero__sub">当前学段：{{ stageType === 'mid' ? '初中' : '高中' }}</div>
+          </div>
+        </div>
+        <div class="analysis-hero__visual">
+          <div class="analysis-hero__runner"></div>
+          <div class="analysis-hero__gauge">
+            <div class="analysis-hero__gauge-ring"></div>
+            <div class="analysis-hero__gauge-inner">
+              <div class="analysis-hero__gauge-label">综合评分</div>
+              <div class="analysis-hero__gauge-value">{{ comprehensiveScore }}</div>
+              <div class="analysis-hero__gauge-unit">分</div>
+            </div>
+          </div>
+          <div class="analysis-hero__stats">
+            <div v-for="item in heroStats" :key="item.label" class="analysis-hero__stat">
+              <div class="analysis-hero__stat-label">{{ item.label }}</div>
+              <div class="analysis-hero__stat-value">{{ item.value }}<span>{{ item.suffix }}</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <div v-if="!profile" class="py-30px"><ElEmpty description="请选择学生后查看阶段对比" /></div>
+      <ElCard shadow="never" class="analysis-card">
+        <div class="card-title">{{ titleText }}</div>
 
-      <template v-else>
-        <ElRow :gutter="12" class="mb-14px profile-row">
+        <div v-if="!profile" class="py-30px"><ElEmpty description="请选择学生后查看阶段对比" /></div>
+
+        <template v-else>
+        <ElRow :gutter="12" class="analysis-kpi-row mb-14px profile-row">
           <ElCol :xs="24" :sm="24" :md="8" :lg="6" :xl="6" class="stretch-col">
             <ElCard shadow="hover" class="text-center same-height-card score-card">
               <div class="card-subtitle mb-6px">综合评分</div>
@@ -396,13 +436,15 @@ onMounted(async () => {
           </ElTableColumn>
           <ElTableColumn prop="teacher_comment" label="老师评语" min-width="200" show-overflow-tooltip />
         </ElTable>
-      </template>
-    </ElCard>
+        </template>
+      </ElCard>
+    </div>
   </ContentWrap>
 </template>
 
 <style scoped>
-.analysis-card { border-radius: 10px; }
+@import '@/styles/analysis-cockpit.less';
+
 .card-title { text-align: center; font-size: 22px; font-weight: 700; margin-bottom: 16px; }
 .card-subtitle { font-size: 14px; color: #606266; font-weight: 500; }
 .sub-cell { color: #909399; font-size: 12px; }

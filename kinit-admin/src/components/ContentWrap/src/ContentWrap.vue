@@ -34,3 +34,19 @@ defineProps({
     </div>
   </ElCard>
 </template>
+
+<style scoped>
+.v-content-wrap {
+  background: transparent;
+  border-radius: 0;
+}
+
+.v-content-wrap :deep(.el-card__header) {
+  background: transparent;
+  border-bottom: none;
+}
+
+.v-content-wrap :deep(.el-card__body) {
+  padding: 20px;
+}
+</style>

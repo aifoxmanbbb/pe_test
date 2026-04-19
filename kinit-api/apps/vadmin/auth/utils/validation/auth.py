@@ -7,14 +7,17 @@
 
 from fastapi import Request
 import jwt
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from application import settings
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from apps.vadmin.auth.models import VadminUser
+from apps.vadmin.auth import models as auth_models
 from core.exception import CustomException
 from utils import status
 from datetime import timedelta, datetime
 from apps.vadmin.auth.crud import UserDal
+from apps.vadmin.sport.service.scope_service import get_user_sport_scope
 
 
 class Auth(BaseModel):
@@ -22,6 +25,11 @@ class Auth(BaseModel):
     db: AsyncSession
     data_range: int | None = None
     dept_ids: list | None = []
+    role_keys: list[str] = Field(default_factory=list)
+    school_ids: list[int | str] = Field(default_factory=list)
+    school_names: list[str] = Field(default_factory=list)
+    class_ids: list[int | str] = Field(default_factory=list)
+    class_names: list[str] = Field(default_factory=list)
 
     class Config:
         # 接收任意类型
@@ -105,9 +113,29 @@ class AuthValidation:
         except RuntimeError:
             request.scope["body"] = "获取失败"
         if is_all:
-            return Auth(user=user, db=db)
+            role_keys = (await db.execute(
+                select(auth_models.VadminRole.role_key)
+                .select_from(auth_models.vadmin_auth_user_roles)
+                .join(auth_models.VadminRole, auth_models.VadminRole.id == auth_models.vadmin_auth_user_roles.c.role_id)
+                .where(
+                    auth_models.vadmin_auth_user_roles.c.user_id == user.id,
+                    auth_models.VadminRole.is_delete == False
+                )
+            )).scalars().all()
+            return Auth(user=user, db=db, role_keys=list(role_keys))
         data_range, dept_ids = await cls.get_user_data_range(user, db)
-        return Auth(user=user, db=db, data_range=data_range, dept_ids=dept_ids)
+        sport_scope = await get_user_sport_scope(db, user)
+        return Auth(
+            user=user,
+            db=db,
+            data_range=data_range,
+            dept_ids=dept_ids,
+            role_keys=sport_scope["role_keys"],
+            school_ids=sport_scope["school_ids"],
+            school_names=sport_scope["school_names"],
+            class_ids=sport_scope["class_ids"],
+            class_names=sport_scope["class_names"]
+        )
 
     @classmethod
     def get_user_permissions(cls, user: VadminUser) -> set:

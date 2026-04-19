@@ -2,7 +2,7 @@
 import { reactive, ref, watch } from 'vue'
 import { Form } from '@/components/Form'
 import { useI18n } from '@/hooks/web/useI18n'
-import { ElCheckbox, ElLink } from 'element-plus'
+import { ElCheckbox } from 'element-plus'
 import { useForm } from '@/hooks/web/useForm'
 import { getRoleMenusApi } from '@/api/login'
 import { useAuthStore } from '@/store/modules/auth'
@@ -100,9 +100,6 @@ const schema = reactive<FormSchema[]>([
             <>
               <div class="flex justify-between items-center w-[100%]">
                 <ElCheckbox v-model={remember.value} label={t('login.remember')} size="small" />
-                <ElLink type="primary" underline={false}>
-                  {t('login.forgetPassword')}
-                </ElLink>
               </div>
             </>
           )
@@ -245,7 +242,7 @@ const getMenu = async () => {
       addRoute(route as RouteRecordRaw) // 动态添加可访问路由表
     })
     permissionStore.setIsAddRouters(true)
-    push({ path: redirect.value || permissionStore.addRouters[0].path })
+    push({ path: redirect.value || '/home' })
   }
 }
 

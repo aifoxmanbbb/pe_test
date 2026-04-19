@@ -18,9 +18,10 @@ import {
   ElTabs,
   ElTabPane
 } from 'element-plus'
-import { BaseButton } from '@/components/Button'
 import { getFitnessStudentAnalysisApi, getFitnessStudentOptionsApi } from '@/api/vadmin/fitness'
 import { getClassOptionsApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/api/vadmin/sport'
+import { useHeaderTheme } from '@/hooks/web/useHeaderTheme'
+import { analysisHeroImages } from '@/constants/cockpit'
 
 defineOptions({ name: 'FitnessStudentAnalysis' })
 
@@ -34,9 +35,17 @@ const classOptions = ref<any[]>([])
 const studentOptions = ref<any[]>([])
 const currentSchoolName = ref<string>('')
 
+const headerThemeMap = {
+  primary: { bg: '#0c2137', text: '#f8fafc', hover: 'rgba(56, 189, 248, 0.14)' },
+  mid: { bg: '#081426', text: '#f8fafc', hover: 'rgba(45, 212, 191, 0.14)' },
+  high: { bg: '#0b1a2e', text: '#f8fafc', hover: 'rgba(20, 184, 166, 0.14)' },
+  university: { bg: '#10233d', text: '#f8fafc', hover: 'rgba(125, 211, 252, 0.14)' }
+}
+
 const profile = ref<any>(null)
 const stats = ref<any>(null)
 const detailList = ref<any[]>([])
+const detailColumns = ref<any[]>([])
 
 const searchSchema = computed<FormSchema[]>(() => [
   {
@@ -127,6 +136,13 @@ const titleText = computed(() => {
   if (!profile.value) return '某学校-学号-学生 体质测试情况分析'
   return `${profile.value.school || '-'}-${profile.value.student_no || '-'}-${profile.value.student_name || '-'} 体质测试情况分析`
 })
+
+const heroStats = computed(() => [
+  { label: '综合评分', value: Number(comprehensiveScore.value || 0).toFixed(1), suffix: '分' },
+  { label: '已测项目', value: Number(stats.value?.tested_item_count || 0), suffix: '项' },
+  { label: '及格项目', value: Number(stats.value?.pass_items || 0), suffix: '项' },
+  { label: '满分项目', value: Number(stats.value?.full_item_count || 0), suffix: '项' }
+])
 
 const comprehensiveScore = computed(() => {
   if (!detailList.value.length) return 0
@@ -230,11 +246,13 @@ const loadData = async (params: Record<string, any> = lastParams.value) => {
     profile.value = null
     stats.value = null
     detailList.value = []
+    detailColumns.value = []
     return
   }
   profile.value = res.data.profile
   stats.value = res.data.stats || {}
   detailList.value = res.data.detail_list || []
+  detailColumns.value = res.data.detail_columns || []
   applyCharts(res.data)
 }
 
@@ -249,10 +267,6 @@ const onTabChange = async () => {
   detailList.value = []
   await syncSearchValues({ school_name: null, grade_name: null, class_name: null, student_no: null })
   await initDefaultQuery()
-}
-
-const exportChart = () => {
-  ElMessage.success('图表导出能力将在下一步对接文件下载。')
 }
 
 const syncSearchValues = async (params: Record<string, any>) => {
@@ -279,35 +293,66 @@ const initDefaultQuery = async () => {
 onMounted(async () => {
   await initDefaultQuery()
 })
+
+useHeaderTheme(() => stageType.value, headerThemeMap, 'primary')
 </script>
 
 <template>
   <ContentWrap>
-    <ElTabs v-model="stageType" class="mb-10px" @tab-change="onTabChange">
-      <ElTabPane label="小学" name="primary" />
-      <ElTabPane label="初中" name="mid" />
-      <ElTabPane label="高中" name="high" />
-      <ElTabPane label="大学" name="university" />
-    </ElTabs>
+    <div class="analysis-stage analysis-stage--fitness">
+      <ElTabs v-model="stageType" class="analysis-tabs mb-10px" @tab-change="onTabChange">
+        <ElTabPane label="小学" name="primary" />
+        <ElTabPane label="初中" name="mid" />
+        <ElTabPane label="高中" name="high" />
+        <ElTabPane label="大学" name="university" />
+      </ElTabs>
 
-    <div class="flex items-start gap-10px mb-12px">
-      <Search
-        ref="searchRef"
-        :schema="searchSchema"
-        class="flex-1"
-        @search="(params) => { loadStudentOptions(params); loadData(params) }"
-        @reset="(params) => { loadStudentOptions(params); loadData(params) }"
-      />
-      <BaseButton type="primary" @click="exportChart">导出图表</BaseButton>
-    </div>
+      <div class="analysis-search-shell mb-12px">
+        <Search
+          ref="searchRef"
+          :schema="searchSchema"
+          :show-reset="false"
+          @search="(params) => { loadStudentOptions(params); loadData(params) }"
+          @reset="(params) => { loadStudentOptions(params); loadData(params) }"
+        />
+      </div>
 
-    <ElCard shadow="never" class="analysis-card">
-      <div class="card-title">{{ titleText }}</div>
+      <section class="analysis-hero mb-16px" :style="{ '--analysis-hero-image': `url(${analysisHeroImages.fitnessStudent}) center/cover no-repeat` }">
+        <div class="analysis-hero__copy">
+          <div class="analysis-hero__eyebrow">FITNESS STUDENT ANALYSIS</div>
+          <h1 class="analysis-hero__title">学生 <span>阶段对比</span></h1>
+          <p class="analysis-hero__desc">集中查看学生在不同批次中的体测雷达、分值波动和状态数量变化，判断成长是单点提升还是整体抬升。</p>
+          <div class="analysis-hero__meta">
+            <div class="analysis-hero__pill">{{ titleText }}</div>
+            <div class="analysis-hero__sub">当前学段：{{ ({ primary: '小学', mid: '初中', high: '高中', university: '大学' } as any)[stageType] }}</div>
+          </div>
+        </div>
+        <div class="analysis-hero__visual">
+          <div class="analysis-hero__runner"></div>
+          <div class="analysis-hero__gauge">
+            <div class="analysis-hero__gauge-ring"></div>
+            <div class="analysis-hero__gauge-inner">
+              <div class="analysis-hero__gauge-label">综合评分</div>
+              <div class="analysis-hero__gauge-value">{{ comprehensiveScore }}</div>
+              <div class="analysis-hero__gauge-unit">分</div>
+            </div>
+          </div>
+          <div class="analysis-hero__stats">
+            <div v-for="item in heroStats" :key="item.label" class="analysis-hero__stat">
+              <div class="analysis-hero__stat-label">{{ item.label }}</div>
+              <div class="analysis-hero__stat-value">{{ item.value }}<span>{{ item.suffix }}</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <div v-if="!profile" class="py-30px"><ElEmpty description="请选择学生后查看体测分析" /></div>
+      <ElCard shadow="never" class="analysis-card">
+        <div class="card-title">{{ titleText }}</div>
 
-      <template v-else>
-        <ElRow :gutter="12" class="mb-14px profile-row">
+        <div v-if="!profile" class="py-30px"><ElEmpty description="请选择学生后查看体测分析" /></div>
+
+        <template v-else>
+        <ElRow :gutter="12" class="analysis-kpi-row mb-14px profile-row">
           <ElCol :xs="24" :sm="24" :md="8" :lg="6" :xl="6" class="stretch-col">
             <ElCard shadow="hover" class="text-center same-height-card score-card">
               <div class="card-subtitle mb-6px">综合评分</div>
@@ -402,30 +447,26 @@ onMounted(async () => {
 
         <ElTable :data="detailList" stripe>
           <ElTableColumn prop="batch_name" label="批次" min-width="160" />
-          <ElTableColumn label="BMI" min-width="130" align="center">
-            <template #default="{ row }"><div>{{ row.bmi_score }}</div><div class="sub-cell">{{ row.bmi_point }}分</div></template>
-          </ElTableColumn>
-          <ElTableColumn label="肺活量" min-width="130" align="center">
-            <template #default="{ row }"><div>{{ row.lung_score }}</div><div class="sub-cell">{{ row.lung_point }}分</div></template>
-          </ElTableColumn>
-          <ElTableColumn label="50米" min-width="130" align="center">
-            <template #default="{ row }"><div>{{ row.sprint_score }}</div><div class="sub-cell">{{ row.sprint_point }}分</div></template>
-          </ElTableColumn>
-          <ElTableColumn label="体前屈" min-width="130" align="center">
-            <template #default="{ row }"><div>{{ row.sit_score }}</div><div class="sub-cell">{{ row.sit_point }}分</div></template>
-          </ElTableColumn>
-          <ElTableColumn label="跳绳" min-width="130" align="center">
-            <template #default="{ row }"><div>{{ row.rope_score }}</div><div class="sub-cell">{{ row.rope_point }}分</div></template>
+          <ElTableColumn
+            v-for="(col, idx) in detailColumns"
+            :key="`${col.item_code}-${idx}`"
+            :label="col.item_name"
+            min-width="130"
+            align="center"
+          >
+            <template #default="{ row }"><div>{{ row.items?.[idx]?.raw_score ?? '-' }}</div><div class="sub-cell">{{ row.items?.[idx]?.score_value ?? 0 }}分</div></template>
           </ElTableColumn>
           <ElTableColumn prop="teacher_comment" label="老师评语" min-width="220" show-overflow-tooltip />
         </ElTable>
-      </template>
-    </ElCard>
+        </template>
+      </ElCard>
+    </div>
   </ContentWrap>
 </template>
 
 <style scoped>
-.analysis-card { border-radius: 10px; }
+@import '@/styles/analysis-cockpit.less';
+
 .card-title { text-align: center; font-size: 22px; font-weight: 700; margin-bottom: 16px; }
 .card-subtitle { font-size: 14px; color: #606266; font-weight: 500; }
 .sub-cell { color: #909399; font-size: 12px; }

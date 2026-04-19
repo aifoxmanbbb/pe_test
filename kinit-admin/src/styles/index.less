@@ -20,3 +20,32 @@
 .el-table__body tr.current-row>td.el-table__cell {
   background-color: #ecf5ff !important;
 }
+
+.layout-border__right,
+.layout-border__right::before,
+.layout-border__right::after {
+  border-right: none !important;
+  box-shadow: none !important;
+}
+
+.layout-border__bottom,
+.layout-border__bottom::before,
+.layout-border__bottom::after,
+.layout-border__top,
+.layout-border__top::before,
+.layout-border__top::after {
+  border-top: none !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+}
+
+#v-tool-header::after,
+#el-tool-header::after,
+.v-tool-header::after,
+.layout-border__right::after {
+  display: none !important;
+  content: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}

@@ -36,6 +36,10 @@ const props = defineProps({
   inline: propTypes.bool.def(true),
   // 是否去除空值项
   removeNoValueItem: propTypes.bool.def(true),
+  searchButtonCircle: propTypes.bool.def(false),
+  searchButtonIconOnly: propTypes.bool.def(false),
+  searchButtonClass: propTypes.string.def(''),
+  searchButtonIcon: propTypes.string.def('ep:search'),
   model: {
     type: Object as PropType<Recordable>,
     default: () => ({})
@@ -79,6 +83,10 @@ const newSchema = computed(() => {
                     showSearch={propsComputed.showSearch}
                     showReset={propsComputed.showReset}
                     showExpand={propsComputed.showExpand}
+                    searchButtonCircle={propsComputed.searchButtonCircle}
+                    searchButtonIconOnly={propsComputed.searchButtonIconOnly}
+                    searchButtonClass={propsComputed.searchButtonClass}
+                    searchButtonIcon={propsComputed.searchButtonIcon}
                     searchLoading={propsComputed.searchLoading}
                     resetLoading={propsComputed.resetLoading}
                     visible={visible.value}
@@ -258,6 +266,10 @@ const onFormValidate = (prop: FormItemProp, isValid: boolean, message: string) =
         :show-reset="getProps.showReset"
         :show-search="getProps.showSearch"
         :show-expand="getProps.showExpand"
+        :search-button-circle="getProps.searchButtonCircle"
+        :search-button-icon-only="getProps.searchButtonIconOnly"
+        :search-button-class="getProps.searchButtonClass"
+        :search-button-icon="getProps.searchButtonIcon"
         :search-loading="getProps.searchLoading"
         :reset-loading="getProps.resetLoading"
         @expand="setVisible"
