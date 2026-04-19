@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { ElScrollbar } from 'element-plus'
-import { ThemeSwitch } from '@/components/ThemeSwitch'
 import { useAppStore } from '@/store/modules/app'
 import { useDesign } from '@/hooks/web/useDesign'
 import { underlineToHump } from '@/utils'
@@ -195,6 +194,8 @@ const title = computed(() => underlineToHump(appStore.getTitle))
 
 .login-stage__panel {
   position: relative;
+  width: min(100%, 460px);
+  justify-self: end;
   padding: 24px 24px 20px;
   border: 1px solid rgba(226, 232, 240, 0.12);
   background:
@@ -288,24 +289,156 @@ const title = computed(() => underlineToHump(appStore.getTitle))
   .login-stage__content {
     grid-template-columns: 1fr;
     gap: 24px;
+    min-height: auto;
   }
 
   .login-stage__hero {
     padding: 24px 0 0;
+    max-width: none;
+  }
+
+  .login-stage__panel {
+    width: 100%;
+    justify-self: stretch;
   }
 }
 
 @media (max-width: 768px) {
+  .login-stage {
+    background:
+      linear-gradient(180deg, rgba(5, 10, 22, 0.92), rgba(5, 10, 22, 0.72)),
+      linear-gradient(180deg, rgba(56, 189, 248, 0.1), transparent 28%),
+      var(--login-image) 32% center/cover no-repeat;
+  }
+
   .login-stage__shell {
-    padding: 16px;
+    padding: 14px 14px 18px;
+  }
+
+  .login-stage__topbar {
+    align-items: flex-start;
+  }
+
+  .login-stage__brand {
+    gap: 10px;
+  }
+
+  .login-stage__brand-logo {
+    width: 42px;
+    height: 42px;
+  }
+
+  .login-stage__brand-title {
+    font-size: 16px;
+    line-height: 1.3;
+  }
+
+  .login-stage__brand-sub {
+    margin-top: 2px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+  }
+
+  .login-stage__content {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 18px;
+    min-height: auto;
+    margin-top: 14px;
+  }
+
+  .login-stage__hero {
+    padding: 4px 0 0;
+  }
+
+  .login-stage__eyebrow,
+  .login-stage__panel-eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.16em;
+  }
+
+  .login-stage__title {
+    margin: 12px 0 12px;
+    font-size: clamp(28px, 9vw, 40px);
+    line-height: 1.08;
+  }
+
+  .login-stage__desc {
+    font-size: 14px;
+    line-height: 1.75;
   }
 
   .login-stage__signals {
     grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 18px;
+  }
+
+  .login-stage__signal {
+    padding: 14px 14px 16px;
+  }
+
+  .login-stage__signal strong {
+    font-size: 15px;
+    line-height: 1.55;
   }
 
   .login-stage__panel-head {
     flex-direction: column;
+    gap: 10px;
+  }
+
+  .login-stage__panel {
+    padding: 18px 16px 16px;
+    border-radius: 22px;
+  }
+
+  .login-stage__panel-title {
+    margin-top: 6px;
+    font-size: 24px;
+  }
+
+  .login-stage__form-wrap {
+    margin-top: 18px;
+  }
+
+  .login-stage__form :deep(.el-form-item) {
+    margin-bottom: 16px;
+  }
+
+  .login-stage__form :deep(.el-input__wrapper) {
+    min-height: 46px;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-stage__shell {
+    padding: 12px 12px 16px;
+  }
+
+  .login-stage__brand {
+    align-items: flex-start;
+  }
+
+  .login-stage__brand-sub {
+    max-width: 220px;
+    line-height: 1.5;
+  }
+
+  .login-stage__title {
+    font-size: 28px;
+  }
+
+  .login-stage__desc {
+    font-size: 13px;
+  }
+
+  .login-stage__signal span {
+    font-size: 11px;
+  }
+
+  .login-stage__signal strong {
+    font-size: 14px;
   }
 }
 </style>
