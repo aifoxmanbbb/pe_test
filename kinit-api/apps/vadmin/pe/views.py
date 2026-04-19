@@ -201,6 +201,55 @@ def _rate_from_totals(totals: list[float]) -> dict[str, float]:
     }
 
 
+def _scope_mode(auth: Auth) -> str:
+    role_keys = {str(key or '').lower() for key in (getattr(auth, 'role_keys', None) or [])}
+    if ('school_leader' in role_keys) or ('leader' in role_keys):
+        return 'grade'
+    if ('teacher_coach' in role_keys) or ('teacher' in role_keys):
+        return 'student'
+    return 'school'
+
+
+def _build_scope_avg_compare(rows: list[VadminSportScore], auth: Auth) -> dict[str, Any]:
+    mode = _scope_mode(auth)
+    if mode == 'student':
+        by_student = group_scores_by_student(rows)
+        ranked = []
+        for student_no, s_rows in by_student.items():
+            first = s_rows[0] if s_rows else None
+            ranked.append({
+                'label': getattr(first, 'student_name', None) or student_no or '-',
+                'value': student_total_score(s_rows)
+            })
+        ranked = sorted(ranked, key=lambda item: item['value'], reverse=True)[:12]
+        return {
+            'mode': mode,
+            'label_name': '学生',
+            'metric_name': '体考均分',
+            'labels': [item['label'] for item in ranked],
+            'values': [item['value'] for item in ranked]
+        }
+
+    grouped: dict[str, list[VadminSportScore]] = {}
+    for row in rows:
+        key = (row.grade_name if mode == 'grade' else row.school_name) or '-'
+        grouped.setdefault(key, []).append(row)
+
+    labels = []
+    values = []
+    for key, g_rows in sorted(grouped.items(), key=lambda item: item[0]):
+        labels.append(key)
+        values.append(avg(list(_student_total_map(g_rows).values())))
+
+    return {
+        'mode': mode,
+        'label_name': '年级' if mode == 'grade' else '学校',
+        'metric_name': '体考均分',
+        'labels': labels,
+        'values': values
+    }
+
+
 def _threshold_for_codes(
         threshold_map: dict[str, dict[str, float]],
         codes: list[str],
@@ -221,12 +270,53 @@ def _threshold_for_codes(
     }
 
 
+def _build_scope_avg_compare(rows: list[VadminSportScore], auth: Auth) -> dict[str, Any]:
+    mode = _scope_mode(auth)
+    grouped = _latest_scope_rows(rows, mode)
+    ranked = []
+    for label, g_rows in grouped.items():
+        ranked.append({
+            'label': label,
+            'value': avg(list(_student_total_map(g_rows).values()))
+        })
+    ranked = sorted(ranked, key=lambda item: item['value'], reverse=True)[:12]
+
+    return {
+        'mode': mode,
+        'label_name': 'å­¦ç”Ÿ' if mode == 'student' else ('å¹´çº§' if mode == 'grade' else 'å­¦æ ¡'),
+        'metric_name': 'ä½“è€ƒå‡åˆ†',
+        'labels': [item['label'] for item in ranked],
+        'values': [item['value'] for item in ranked]
+    }
+
+
+def _build_scope_avg_compare(rows: list[VadminSportScore], auth: Auth) -> dict[str, Any]:
+    mode = _scope_mode(auth)
+    grouped = _latest_scope_rows(rows, mode)
+    ranked = []
+    for label, g_rows in grouped.items():
+        ranked.append({
+            'label': label,
+            'value': avg(list(_student_total_map(g_rows).values()))
+        })
+    ranked = sorted(ranked, key=lambda item: item['value'], reverse=True)[:12]
+
+    return {
+        'mode': mode,
+        'label_name': '学生' if mode == 'student' else ('年级' if mode == 'grade' else '学校'),
+        'metric_name': '体考均分',
+        'labels': [item['label'] for item in ranked],
+        'values': [item['value'] for item in ranked]
+    }
+
+
 def _empty_overview() -> dict[str, Any]:
     return {
         'kpi': {'total_students': 0, 'avg_score': 0, 'pass_rate': 0, 'excellent_rate': 0, 'full_rate': 0},
         'item_avg': {'items': [], 'values': [], 'threshold': {'pass': 10, 'excellent': 14, 'full': 20}},
         'class_rate': {'classes': [], 'pass_rate': [], 'excellent_rate': [], 'full_rate': []},
         'batch_trend': {'batches': [], 'avg_score': [], 'pass_line': [], 'excellent_line': [], 'full_line': []},
+        'scope_avg_compare': {'mode': 'school', 'label_name': '学校', 'metric_name': '体考均分', 'labels': [], 'values': []},
         'class_list': []
     }
 
@@ -286,8 +376,14 @@ def _normalize_gender(gender: str | None) -> str:
     return 'all'
 
 
-def _parse_raw_score(raw: Any) -> float | None:
-    return RuleEngine.parse_time_to_seconds(raw)
+def _parse_raw_score(raw: Any, item_code: str | None = None) -> float | None:
+    parsed = RuleEngine.parse_time_to_seconds(raw)
+    if parsed is None:
+        return None
+    code = str(item_code or '').lower()
+    if code in {'jump', 'ball'} and parsed > 30:
+        return round2(parsed / 100.0)
+    return parsed
 
 
 def _select_rule(item_rules: list[VadminSportStandardItem], gender: str | None) -> VadminSportStandardItem | None:
@@ -304,7 +400,44 @@ def _select_rule(item_rules: list[VadminSportStandardItem], gender: str | None) 
     for g, rule in normalized_rules:
         if g == 'all':
             return rule
-    return item_rules[0]
+    return None
+
+
+def _latest_scope_rows(rows: list[VadminSportScore], mode: str) -> dict[str, list[VadminSportScore]]:
+    grouped: dict[str, list[VadminSportScore]] = {}
+    if mode == 'student':
+        by_student = group_scores_by_student(rows)
+        for student_no, s_rows in by_student.items():
+            latest_rows = []
+            for batch_id in sorted({r.batch_id for r in s_rows}, reverse=True):
+                candidate_rows = [r for r in s_rows if r.batch_id == batch_id]
+                if student_total_score(candidate_rows) > 0:
+                    latest_rows = candidate_rows
+                    break
+            if not latest_rows:
+                latest_batch_id = max((r.batch_id for r in s_rows), default=0)
+                latest_rows = [r for r in s_rows if r.batch_id == latest_batch_id]
+            first = latest_rows[0] if latest_rows else (s_rows[0] if s_rows else None)
+            label = getattr(first, 'student_name', None) or student_no or '-'
+            grouped[label] = latest_rows
+        return grouped
+
+    bucketed: dict[str, list[VadminSportScore]] = {}
+    for row in rows:
+        label = (row.grade_name if mode == 'grade' else row.school_name) or '-'
+        bucketed.setdefault(label, []).append(row)
+    for label, label_rows in bucketed.items():
+        latest_rows = []
+        for batch_id in sorted({r.batch_id for r in label_rows}, reverse=True):
+            candidate_rows = [r for r in label_rows if r.batch_id == batch_id]
+            if avg(list(_student_total_map(candidate_rows).values())) > 0:
+                latest_rows = candidate_rows
+                break
+        if not latest_rows:
+            latest_batch_id = max((r.batch_id for r in label_rows), default=0)
+            latest_rows = [r for r in label_rows if r.batch_id == latest_batch_id]
+        grouped[label] = latest_rows
+    return grouped
 
 
 def _calc_by_rule(
@@ -325,7 +458,12 @@ def _calc_by_rule(
             except Exception:
                 segments = None
         if isinstance(segments, list) and segments:
-            return RuleEngine.eval_by_segment(raw_score, segments, grade_name=grade_name, conflict_policy=conflict_policy)
+            result = RuleEngine.eval_by_segment(raw_score, segments, grade_name=grade_name, conflict_policy=conflict_policy)
+            max_score = to_float(getattr(rule, 'max_score', 0), default=0.0)
+            score_value = to_float(result.get('score_value'), default=0.0)
+            if max_score > 0 and max_score < score_value <= 100:
+                result['score_value'] = round2((score_value / 100.0) * max_score)
+            return result
         return {}
 
     pass_v = to_float(rule.pass_threshold, default=0.0)
@@ -334,11 +472,14 @@ def _calc_by_rule(
     if pass_v == 0 and excellent_v == 0 and full_v == 0:
         return {}
 
-    return RuleEngine.eval_by_threshold(raw_score, {
+    result = RuleEngine.eval_by_threshold(raw_score, {
         'pass': pass_v,
         'excellent': excellent_v,
         'full': full_v
     })
+    if to_float(getattr(rule, 'max_score', 0), default=0.0) <= 0:
+        result['score_value'] = 0.0
+    return result
 
 
 @app.get('/overview', summary='体考成绩总览')
@@ -378,15 +519,24 @@ async def get_overview(
         return SuccessResponse(_empty_overview())
 
     target_batch = batches[0]
-    current_rows = await list_scores(
-        auth.db,
-        biz_type='pe',
-        batch_ids=[target_batch.id],
-        school_name=school_name,
-        grade_name=grade_name,
-        class_name=class_name
-    )
-    current_rows = [r for r in current_rows if _in_scope(auth, r.school_name, r.class_name)]
+    current_rows: list[VadminSportScore] = []
+    for candidate in batches:
+        candidate_rows = await list_scores(
+            auth.db,
+            biz_type='pe',
+            batch_ids=[candidate.id],
+            school_name=school_name,
+            grade_name=grade_name,
+            class_name=class_name
+        )
+        candidate_rows = [r for r in candidate_rows if _in_scope(auth, r.school_name, r.class_name)]
+        if candidate_rows and avg(list(_student_total_map(candidate_rows).values())) > 0:
+            target_batch = candidate
+            current_rows = candidate_rows
+            break
+        if candidate_rows and not current_rows:
+            current_rows = candidate_rows
+            target_batch = candidate
     if not current_rows:
         data = _empty_overview()
         trend_batches = sorted(batches, key=lambda x: x.id)
@@ -421,6 +571,7 @@ async def get_overview(
         class_rate = _rate_from_totals(class_totals)
         class_list.append({
             'school_name': school,
+            'grade_name': rows[0].grade_name if rows else '',
             'class_name': cls,
             'gate_score': format_score(_rows_item_avg_raw(rows, slot_codes['gate'])),
             'gate_point': _rows_item_avg_score(rows, slot_codes['gate']),
@@ -479,6 +630,7 @@ async def get_overview(
             'excellent_line': [PE_EXCELLENT_LINE for _ in trend_batches],
             'full_line': [PE_FULL_LINE for _ in trend_batches]
         },
+        'scope_avg_compare': _build_scope_avg_compare(trend_rows or current_rows, auth),
         'class_list': class_list
     }
     data['class_list'] = _filter_rows_by_scope(auth, data['class_list'], ['school_name', 'class_name'])
@@ -1269,7 +1421,7 @@ async def get_batch_options(
     sql = sql.order_by(VadminSportBatch.id.desc())
     rows = (await auth.db.scalars(sql)).all()
     rows = [r for r in rows if _in_scope(auth, r.school_name, r.class_name)]
-    data = [{'label': r.batch_name, 'value': r.id} for r in rows]
+    data = [{'label': r.batch_name, 'value': r.id, 'standard_id': r.standard_id} for r in rows]
     return SuccessResponse(data)
 
 
@@ -1314,7 +1466,7 @@ async def upsert_scores(
         if not _in_scope(auth, item.get('school_name'), item.get('class_name')):
             continue
 
-        raw_score_parsed = _parse_raw_score(item.get('raw_score'))
+        raw_score_parsed = _parse_raw_score(item.get('raw_score'), item.get('item_code'))
         item_rules = item_rule_map.get(item.get('item_code') or '', [])
         selected_rule = _select_rule(item_rules, item.get('gender'))
         calc_result = _calc_by_rule(raw_score_parsed, selected_rule, conflict_policy, item.get('grade_name', ''))

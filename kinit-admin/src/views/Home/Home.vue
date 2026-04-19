@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElEmpty, ElProgress } from 'element-plus'
+import { ElProgress } from 'element-plus'
 import type { EChartsOption } from 'echarts'
 import { ContentWrap } from '@/components/ContentWrap'
 import { Echart } from '@/components/Echart'
 import { useAuthStore } from '@/store/modules/auth'
 import { useHeaderTheme } from '@/hooks/web/useHeaderTheme'
+import MyScores from '@/views/Vadmin/Sport/Student/MyScores.vue'
 import { getPeBatchOptionsApi, getPeOverviewApi, getPeStudentAnalysisSelfApi } from '@/api/vadmin/pe'
 import {
   getFitnessBatchOptionsApi,
@@ -145,7 +146,7 @@ const overviewMetric = computed(() => {
       title: '个人综合总览值',
       subtitle: peSelfSnapshot.value?.detail_list?.[0]?.batch_name || '最新个人成绩',
       value: safeNum(studentPeStats.value.latest_total, 1),
-      max: 200,
+      max: 50,
       unit: '分',
       status: '当前成绩概览'
     }
@@ -154,7 +155,7 @@ const overviewMetric = computed(() => {
     title: '体考综合总览值',
     subtitle: latestPeBatch.value?.label || '最新体考批次',
     value: safeNum(peKpi.value.avg_score, 1),
-    max: 200,
+    max: 50,
     unit: '分',
     status: '当前成绩概览'
   }
@@ -177,7 +178,7 @@ const commandCards = computed(() => {
         short: '总分',
         value: safeNum(studentPeStats.value.latest_total, 1),
         unit: '分',
-        max: 200,
+        max: 50,
         tone: accentPalette.value.accent,
         note: peSelfSnapshot.value?.detail_list?.[0]?.batch_name || '暂无体考批次'
       },
@@ -324,92 +325,78 @@ const cardChartOptions = computed(() =>
   )
 )
 
-const overviewRingOption = computed<EChartsOption>(() => {
-  const percent = Math.min(overviewMetric.value.value / Math.max(overviewMetric.value.max, 1), 1)
-  return {
-    animationDuration: 1200,
-    title: [
-      {
-        text: overviewMetric.value.status,
-        left: 'center',
-        top: '19%',
-        textStyle: {
-          color: 'rgba(148,163,184,0.72)',
-          fontSize: 12,
-          fontWeight: 600,
-          letterSpacing: 1
-        }
-      },
-      {
-        text: formatValue(overviewMetric.value.value, 1),
-        left: 'center',
-        top: '34%',
-        textStyle: {
-          color: '#ffffff',
-          fontSize: 72,
-          fontWeight: 900,
-          fontStyle: 'italic',
-          fontFamily: 'Plus Jakarta Sans'
-        }
-      },
-      {
-        text: overviewMetric.value.unit,
-        left: '67%',
-        top: '53%',
-        textStyle: {
-          color: accentPalette.value.accentStrong,
-          fontSize: 24,
-          fontWeight: 700
-        }
-      },
-      {
-        text: overviewMetric.value.title,
-        left: 'center',
-        top: '66%',
-        textStyle: {
-          color: '#f8fafc',
-          fontSize: 20,
-          fontWeight: 700
-        }
+const buildCompareOption = (
+  title: string,
+  labels: string[],
+  values: number[],
+  color: string,
+  unit = '分'
+): EChartsOption => ({
+  tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+  grid: { left: 18, right: 18, top: 48, bottom: 42, containLabel: true },
+  xAxis: {
+    type: 'category',
+    data: labels,
+    axisLabel: { color: 'rgba(226,232,240,0.76)', interval: 0, rotate: labels.length > 6 ? 20 : 0 },
+    axisLine: { lineStyle: { color: 'rgba(148,163,184,0.16)' } }
+  },
+  yAxis: {
+    type: 'value',
+    name: unit,
+    axisLabel: { color: 'rgba(226,232,240,0.76)' },
+    splitLine: { lineStyle: { color: 'rgba(148,163,184,0.08)' } }
+  },
+  series: [
+    {
+      type: 'bar',
+      data: values,
+      barWidth: 22,
+      itemStyle: {
+        borderRadius: [10, 10, 0, 0],
+        color
       }
-    ],
-    series: [
-      {
-        type: 'pie',
-        radius: ['78%', '86%'],
-        center: ['50%', '50%'],
-        startAngle: 90,
-        clockwise: true,
-        silent: true,
-        label: { show: false },
-        data: [
-          {
-            value: percent,
-            itemStyle: {
-              color: accentPalette.value.accent,
-              shadowBlur: 26,
-              shadowColor: accentPalette.value.accentSoft
-            }
-          },
-          { value: 1 - percent, itemStyle: { color: 'rgba(255,255,255,0.06)' } }
-        ]
-      }
-    ]
+    }
+  ],
+  title: {
+    text: title,
+    left: 'center',
+    top: 8,
+    textStyle: { color: '#f8fafc', fontSize: 16, fontWeight: 700 }
   }
+})
+
+const peScopeCompareOption = computed<EChartsOption>(() => {
+  const compare = peSnapshot.value?.scope_avg_compare || {}
+  return buildCompareOption(
+    `多${compare.label_name || '学校'}体考均分`,
+    compare.labels || [],
+    compare.values || [],
+    accentPalette.value.accent,
+    '分'
+  )
+})
+
+const fitnessScopeCompareOption = computed<EChartsOption>(() => {
+  const compare = fitnessSnapshot.value?.scope_avg_compare || {}
+  return buildCompareOption(
+    `多${compare.label_name || '学校'}体测平均情况`,
+    compare.labels || [],
+    compare.values || [],
+    '#38bdf8',
+    '分'
+  )
 })
 
 const combinedTrendOption = computed<EChartsOption>(() => {
   const axisLabelStyle = { color: 'rgba(226,232,240,0.72)' }
   if (roleType.value === 'student') {
     const peTrend = peSelfSnapshot.value?.total_trend || {}
-    const fitTrend = fitnessSelfSnapshot.value?.item_state_trend || {}
     return {
       tooltip: { trigger: 'axis' },
-      legend: { bottom: 0, textStyle: { color: '#cbd5e1' } },
       grid: { left: 14, right: 12, top: 36, bottom: 34, containLabel: true },
       xAxis: {
         type: 'category',
-        data: peTrend.batches || fitTrend.batches || [],
+        data: peTrend.batches || [],
         axisLabel: axisLabelStyle,
         axisLine: { lineStyle: { color: 'rgba(148,163,184,0.16)' } }
       },
@@ -427,36 +414,19 @@ const combinedTrendOption = computed<EChartsOption>(() => {
           data: peTrend.total || [],
           lineStyle: { color: accentPalette.value.accent, width: 4 },
           areaStyle: { color: accentPalette.value.accentSoft }
-        },
-        {
-          name: '体测不达标项',
-          type: 'line',
-          smooth: true,
-          symbol: 'none',
-          data: fitTrend.fail_items || [],
-          lineStyle: { color: '#38bdf8', width: 3 },
-          areaStyle: { color: 'rgba(56,189,248,0.12)' }
         }
       ]
     }
   }
 
   const peTrend = peSnapshot.value?.batch_trend || {}
-  const fitTrend = fitnessSnapshot.value?.item_trend || {}
-  const fitnessLine =
-    (fitTrend.series || []).reduce(
-      (longest: any, item: any) =>
-        (item?.values || []).length > (longest?.values || []).length ? item : longest,
-      null
-    ) || null
 
   return {
     tooltip: { trigger: 'axis' },
-    legend: { bottom: 0, textStyle: { color: '#cbd5e1' } },
     grid: { left: 14, right: 12, top: 36, bottom: 34, containLabel: true },
     xAxis: {
       type: 'category',
-      data: peTrend.batches || fitTrend.batches || [],
+      data: peTrend.batches || [],
       axisLabel: axisLabelStyle,
       axisLine: { lineStyle: { color: 'rgba(148,163,184,0.16)' } }
     },
@@ -474,62 +444,6 @@ const combinedTrendOption = computed<EChartsOption>(() => {
         data: peTrend.avg_score || [],
         lineStyle: { color: accentPalette.value.accent, width: 4 },
         areaStyle: { color: accentPalette.value.accentSoft }
-      },
-      {
-        name: fitnessLine?.name || '体测重点项',
-        type: 'line',
-        smooth: true,
-        symbol: 'none',
-        data: fitnessLine?.values || [],
-        lineStyle: { color: '#38bdf8', width: 3 },
-        areaStyle: { color: 'rgba(56,189,248,0.12)' }
-      }
-    ]
-  }
-})
-
-const summaryOption = computed<EChartsOption>(() => {
-  const peScore =
-    roleType.value === 'student'
-      ? safeNum(studentPeStats.value.latest_total, 1)
-      : safeNum(peKpi.value.avg_score, 1)
-  const fitScore =
-    roleType.value === 'student'
-      ? safeNum(studentFitnessAverage.value, 1)
-      : safeNum(completionRate.value, 1)
-  const pePass =
-    roleType.value === 'student'
-      ? safeNum(studentPeStats.value.pass_rate, 1)
-      : safeNum(peKpi.value.pass_rate, 1)
-  const fitFull =
-    roleType.value === 'student'
-      ? studentFitnessFullCount.value
-      : Number(fitnessKpi.value.full_item_records || 0)
-
-  return {
-    radar: {
-      indicator: [
-        { name: '体考分值', max: 200 },
-        { name: '体测达成', max: 100 },
-        { name: '体考及格', max: 100 },
-        { name: '体测高分', max: Math.max(fitFull || 1, 10) }
-      ],
-      radius: '58%',
-      splitLine: { lineStyle: { color: 'rgba(148,163,184,0.16)' } },
-      splitArea: { areaStyle: { color: ['rgba(15,23,42,0.18)', 'rgba(15,23,42,0.04)'] } },
-      axisName: { color: '#cbd5e1' }
-    },
-    series: [
-      {
-        type: 'radar',
-        data: [
-          {
-            value: [peScore, fitScore, pePass, fitFull],
-            areaStyle: { color: accentPalette.value.accentSoft },
-            lineStyle: { color: accentPalette.value.accent, width: 2.5 },
-            itemStyle: { color: accentPalette.value.accentStrong }
-          }
-        ]
       }
     ]
   }
@@ -640,6 +554,64 @@ const latestTicker = computed(() => {
   return [`体考：${latestPeBatch.value?.label || '暂无'}`, `体测：${latestFitnessBatch.value?.label || '暂无'}`]
 })
 
+const coreInsights = computed(() => {
+  if (roleType.value === 'student') {
+    return [
+      {
+        label: '最新体考',
+        value: `${formatValue(safeNum(studentPeStats.value.latest_total, 1), 1)} 分`
+      },
+      {
+        label: '最新体测',
+        value: `${formatValue(safeNum(studentFitnessAverage.value, 1), 1)} 分`
+      },
+      {
+        label: '体考记录',
+        value: `${Number(peSelfSnapshot.value?.detail_list?.length || 0)} 次`
+      },
+      {
+        label: '体测记录',
+        value: `${Number(studentFitnessRows.value.length || 0)} 次`
+      }
+    ]
+  }
+
+  return [
+    {
+      label: '体考人数',
+      value: `${Number(peKpi.value.total_students || 0)} 人`
+    },
+    {
+      label: '体考均分',
+      value: `${formatValue(safeNum(peKpi.value.avg_score, 1), 1)} 分`
+    },
+    {
+      label: '体测人数',
+      value: `${Number(fitnessKpi.value.total_students || 0)} 人`
+    },
+    {
+      label: '体测记录数',
+      value: `${Number(fitnessKpi.value.item_records || 0)} 条`
+    }
+  ]
+})
+
+const combinedTrendTitle = computed(() => {
+  const peCount =
+    roleType.value === 'student'
+      ? Number(peSelfSnapshot.value?.total_trend?.batches?.length || 0)
+      : Number(peSnapshot.value?.batch_trend?.batches?.length || 0)
+  return peCount > 1 ? '体考批次变化趋势' : '最新体考成绩概览'
+})
+
+const combinedTrendHint = computed(() => {
+  const peCount =
+    roleType.value === 'student'
+      ? Number(peSelfSnapshot.value?.total_trend?.batches?.length || 0)
+      : Number(peSnapshot.value?.batch_trend?.batches?.length || 0)
+  return peCount > 1 ? `已按最近 ${peCount} 个批次展示体考变化` : '当前仅有一个批次，先展示最新体考结果'
+})
+
 const loadStaffSnapshots = async () => {
   const peBatchInfo = await loadLatestBatch(getPeBatchOptionsApi, ['high', 'mid', 'primary', 'university'])
   latestPeBatch.value = peBatchInfo
@@ -647,7 +619,6 @@ const loadStaffSnapshots = async () => {
     : null
   if (peBatchInfo && getBatchValue(peBatchInfo.batch)) {
     const res = await getPeOverviewApi({
-      batch_id: getBatchValue(peBatchInfo.batch),
       stage_type: peBatchInfo.stageType
     }).catch(() => null)
     peSnapshot.value = res?.data || null
@@ -664,7 +635,6 @@ const loadStaffSnapshots = async () => {
     : null
   if (fitnessBatchInfo && getBatchValue(fitnessBatchInfo.batch)) {
     const res = await getFitnessOverviewApi({
-      batch_id: getBatchValue(fitnessBatchInfo.batch),
       stage_type: fitnessBatchInfo.stageType
     }).catch(() => null)
     fitnessSnapshot.value = res?.data || null
@@ -700,7 +670,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <ContentWrap class="command-center-wrap">
+  <MyScores v-if="roleType === 'student'" />
+  <ContentWrap v-else class="command-center-wrap">
     <div
       class="command-center"
       :style="{
@@ -770,26 +741,26 @@ onMounted(() => {
               <div class="command-core__image"></div>
               <div class="command-core__frame command-core__frame--outer"></div>
               <div class="command-core__frame command-core__frame--inner"></div>
-              <div class="command-core__ring">
-                <Echart :options="overviewRingOption" :height="450" />
-              </div>
               <div class="command-core__panel">
-                <div class="command-core__eyebrow">{{ overviewMetric.status }}</div>
+                <div class="command-core__eyebrow">当前成绩概览</div>
                 <p class="command-core__desc">{{ railDescription }}</p>
-                <div class="command-core__focus">
-                  <strong>核心看点</strong>
-                  <span>
-                    {{
-                      roleType === 'student'
-                        ? '集中展示本人最新体考、体测和关键表现，进入页面就能直接看到最重要的信息。'
-                        : '页面集中展示体考体测总览、结构对比和项目表现，方便快速看清整体情况。'
-                    }}
-                  </span>
+                <div class="command-core__compare-grid">
+                  <div class="command-core__compare-card">
+                    <Echart :options="peScopeCompareOption" :height="260" />
+                  </div>
+                  <div class="command-core__compare-card">
+                    <Echart :options="fitnessScopeCompareOption" :height="260" />
+                  </div>
+                </div>
+                <div class="command-core__insights">
+                  <div v-for="item in coreInsights" :key="item.label" class="command-core__insight">
+                    <span>{{ item.label }}</span>
+                    <strong>{{ item.value }}</strong>
+                  </div>
                 </div>
                 <div class="command-core__ticker">
                   <span v-for="item in latestTicker" :key="item">{{ item }}</span>
                 </div>
-                <div class="command-core__batch">{{ overviewMetric.subtitle }}</div>
               </div>
             </section>
 
@@ -817,11 +788,10 @@ onMounted(() => {
               <div class="trend-board__head">
                 <div>
                   <div class="panel-eyebrow">趋势总览</div>
-                  <h2>体考体测实时趋势看板</h2>
+                  <h2>{{ combinedTrendTitle }}</h2>
                 </div>
                 <div class="trend-board__legend">
-                  <span>自动聚合</span>
-                  <span>实时读数</span>
+                  <span>{{ combinedTrendHint }}</span>
                 </div>
               </div>
               <Echart :options="combinedTrendOption" :height="288" />
@@ -829,14 +799,8 @@ onMounted(() => {
 
             <section class="insight-stack">
               <article class="insight-panel is-focus">
-                <div class="panel-eyebrow">结构矩阵</div>
-                <h3>综合结构矩阵</h3>
-                <Echart :options="summaryOption" :height="210" />
-              </article>
-
-              <article class="insight-panel is-focus">
                 <div class="panel-eyebrow">项目流</div>
-                <h3>{{ roleType === 'student' ? '个人体测项目流' : '体测项目达成流' }}</h3>
+                <h3>体测项目达成流</h3>
                 <Echart :options="structureOption" :height="210" />
               </article>
             </section>
@@ -845,15 +809,6 @@ onMounted(() => {
           <footer class="command-footer">
             <span v-for="item in footerChips" :key="item">{{ item }}</span>
           </footer>
-
-          <ElEmpty
-            v-if="
-              roleType === 'student' &&
-              !(peSelfSnapshot?.detail_list?.length || fitnessSelfSnapshot?.detail_list?.length)
-            "
-            description="暂无可展示的个人成绩数据"
-            class="command-empty"
-          />
         </template>
       </div>
     </div>
@@ -1225,19 +1180,10 @@ onMounted(() => {
   opacity: 0.45;
 }
 
-.command-core__ring {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding-top: 16px;
-}
-
 .command-core__panel {
   position: relative;
   z-index: 1;
-  padding: 0 36px 28px;
+  padding: 24px 36px 28px;
   text-align: center;
 }
 
@@ -1255,27 +1201,50 @@ onMounted(() => {
   line-height: 1.8;
 }
 
-.command-core__focus {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 6px;
-  max-width: 560px;
-  margin-top: 16px;
-  padding: 14px 18px;
-  background: rgba(255, 255, 255, 0.05);
+.command-core__compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  max-width: 960px;
+  margin: 18px auto 0;
+}
+
+.command-core__compare-card {
+  min-height: 260px;
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 22px;
+  overflow: hidden;
 }
 
-.command-core__focus strong {
+.command-core__insights {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 620px;
+  margin: 16px auto 0;
+}
+
+.command-core__insight {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+}
+
+.command-core__insight span {
+  color: rgba(203, 213, 225, 0.78);
+  font-size: 12px;
+}
+
+.command-core__insight strong {
   color: #fff;
   font-size: 18px;
-}
-
-.command-core__focus span {
-  color: rgba(226, 232, 240, 0.78);
-  font-size: 13px;
-  line-height: 1.6;
+  font-weight: 700;
 }
 
 .command-core__ticker {
@@ -1292,19 +1261,6 @@ onMounted(() => {
 .command-core__ticker span {
   padding: 6px 12px;
   background: rgba(255, 255, 255, 0.04);
-  border-radius: 999px;
-}
-
-.command-core__batch {
-  display: inline-block;
-  margin-top: 16px;
-  padding: 10px 22px;
-  color: var(--accent-strong);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  background: rgba(4, 10, 20, 0.68);
-  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
 }
 
@@ -1350,6 +1306,8 @@ onMounted(() => {
   gap: 10px;
   color: rgba(203, 213, 225, 0.72);
   font-size: 11px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .trend-board__legend span {
@@ -1466,6 +1424,11 @@ onMounted(() => {
 
   .command-core__panel {
     padding: 0 18px 18px;
+  }
+
+  .command-core__compare-grid,
+  .command-core__insights {
+    grid-template-columns: 1fr;
   }
 
   .trend-board__head {

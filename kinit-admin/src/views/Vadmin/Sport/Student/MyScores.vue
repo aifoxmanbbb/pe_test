@@ -125,11 +125,10 @@ const profile = computed(() => peData.value?.profile || fitnessData.value?.profi
 const fitnessDetailColumns = computed(() => fitnessData.value?.detail_columns || [])
 const peLatestScore = computed(() => Number(peData.value?.stats?.latest_total || 0))
 const fitnessLatestScore = computed(() => {
+  const score = fitnessData.value?.stats?.latest_composite_score
+  if (score !== undefined && score !== null) return Number(score || 0)
   const row = fitnessData.value?.detail_list?.[0]
-  if (!row) return 0
-  const values = (row.items || []).map((item: any) => Number(item.score_value) || 0)
-  if (!values.length) return 0
-  return Number((values.reduce((a: number, b: number) => a + b, 0) / values.length).toFixed(2))
+  return Number(row?.composite_score || 0)
 })
 
 const heroStats = computed(() => [

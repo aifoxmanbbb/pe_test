@@ -1,20 +1,68 @@
 <script setup lang="tsx">
-import { onMounted, reactive, ref, watch, computed } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { ContentWrap } from '@/components/ContentWrap'
 import { Search } from '@/components/Search'
 import { FormSchema } from '@/components/Form'
-import { ElMessage, ElCard, ElTable, ElTableColumn, ElInput, ElButton } from 'element-plus'
-import { getPeBatchOptionsApi, upsertPeScoresApi, getPeBatchListApi } from '@/api/vadmin/pe'
+import { ElMessage, ElCard, ElTable, ElTableColumn, ElInput, ElButton, ElTooltip, ElIcon } from 'element-plus'
+import { QuestionFilled } from '@element-plus/icons-vue'
+import { getPeBatchOptionsApi, upsertPeScoresApi } from '@/api/vadmin/pe'
 import { getSchoolOptionsApi, getStandardItemOptionsApi, getStudentListApi } from '@/api/vadmin/sport'
 
 defineOptions({ name: 'PEScoreEntry' })
 
+type StandardItemOption = {
+  label: string
+  value: string
+  help_lines?: string[]
+}
+
 const loading = ref(false)
 const entryMode = ref<'student' | 'item'>('student')
-const batchOptions = ref([])
-const schoolOptions = ref([])
-const itemOptions = ref([])
+const batchOptions = ref<any[]>([])
+const schoolOptions = ref<any[]>([])
+const itemOptions = ref<StandardItemOption[]>([])
 const studentList = ref<any[]>([])
+
+const currentItemOption = computed(() =>
+  itemOptions.value.find((item) => item.value === searchParams.value?.item_code) || null
+)
+
+const loadStandardItems = async (batchId?: number) => {
+  const batch = batchOptions.value.find((item) => item.value === batchId)
+  if (!batch?.standard_id) {
+    itemOptions.value = []
+    return
+  }
+  const res = await getStandardItemOptionsApi({ standard_id: batch.standard_id }).catch(() => null)
+  itemOptions.value = res?.data || []
+}
+
+const renderHeaderLabel = (label: string, helpLines?: string[]) => {
+  const lines = (helpLines || []).filter(Boolean)
+  return () => (
+    <div class="entry-header">
+      <span>{label}</span>
+      {lines.length ? (
+        <ElTooltip placement="top" effect="dark">
+          {{
+            content: () => (
+              <div class="entry-header__tooltip">
+                {lines.map((line) => (
+                  <div>{line}</div>
+                ))}
+              </div>
+            ),
+            default: () => (
+              <ElIcon class="entry-header__icon">
+                <QuestionFilled />
+              </ElIcon>
+            )
+          }}
+        </ElTooltip>
+      ) : null}
+    </div>
+  )
+}
 
 const searchSchema = computed<FormSchema[]>(() => {
   const schema: FormSchema[] = [
@@ -27,11 +75,7 @@ const searchSchema = computed<FormSchema[]>(() => {
         options: batchOptions.value,
         filterable: true,
         onChange: async (val: number) => {
-          const batch = (await getPeBatchListApi({ id: val })).data.items.find((i: any) => i.id === val)
-          if (batch) {
-            const res = await getStandardItemOptionsApi({ standard_id: batch.standard_id })
-            itemOptions.value = res.data
-          }
+          await loadStandardItems(val)
         }
       }
     },
@@ -176,7 +220,13 @@ onMounted(async () => {
         
         <!-- 按学生录入模式：动态展示所有项目列 -->
         <template v-if="entryMode === 'student'">
-          <ElTableColumn v-for="item in itemOptions" :key="item.value" :label="item.label" min-width="120">
+          <ElTableColumn
+            v-for="item in itemOptions"
+            :key="item.value"
+            :label="item.label"
+            :render-header="renderHeaderLabel(item.label, item.help_lines)"
+            min-width="150"
+          >
             <template #default="{ row }">
               <ElInput v-model="row.raw_scores[item.value]" placeholder="输入成绩" />
             </template>
@@ -185,7 +235,11 @@ onMounted(async () => {
         
         <!-- 按项目录入模式：仅展示选定项目的单一成绩列 -->
         <template v-else>
-          <ElTableColumn label="当前单项录入成绩" min-width="150">
+          <ElTableColumn
+            label="当前单项录入成绩"
+            :render-header="renderHeaderLabel(currentItemOption?.label || '当前单项录入成绩', currentItemOption?.help_lines)"
+            min-width="180"
+          >
             <template #default="{ row }">
               <ElInput v-model="row.raw_score" placeholder="请输入成绩，如 3'20 或 50" />
             </template>
@@ -205,3 +259,23 @@ onMounted(async () => {
     </ElCard>
   </ContentWrap>
 </template>
+
+<style scoped>
+.entry-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.entry-header__icon {
+  color: var(--el-color-primary);
+  cursor: help;
+  font-size: 14px;
+}
+
+.entry-header__tooltip {
+  max-width: 320px;
+  line-height: 1.6;
+  white-space: normal;
+}
+</style>

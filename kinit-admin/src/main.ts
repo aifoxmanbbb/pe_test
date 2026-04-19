@@ -36,8 +36,30 @@ import App from './App.vue'
 
 import './permission'
 
+const BUILD_SENTINEL_KEY = '__kinit_build_id__'
+const clearRuntimeCacheOnNewBuild = () => {
+  const currentBuildId = __APP_BUILD_ID__
+  const previousBuildId = window.localStorage.getItem(BUILD_SENTINEL_KEY)
+  if (previousBuildId && previousBuildId !== currentBuildId) {
+    window.localStorage.clear()
+    window.sessionStorage.clear()
+    document.cookie.split(';').forEach((cookie) => {
+      const name = cookie.split('=')[0]?.trim()
+      if (!name) return
+      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`
+    })
+    window.localStorage.setItem(BUILD_SENTINEL_KEY, currentBuildId)
+    window.location.replace(window.location.pathname + window.location.search + window.location.hash)
+    return true
+  }
+  window.localStorage.setItem(BUILD_SENTINEL_KEY, currentBuildId)
+  return false
+}
+
 // 创建实例
 const setupAll = async () => {
+  if (clearRuntimeCacheOnNewBuild()) return
+
   const app = createApp(App)
 
   await setupI18n(app)

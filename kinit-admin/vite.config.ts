@@ -24,6 +24,7 @@ function pathResolve(dir: string) {
 export default ({ command, mode }: ConfigEnv): UserConfig => {
   let env = {} as any
   const isBuild = command === 'build'
+  const buildId = `${mode}-${process.env.GITHUB_SHA?.slice(0, 8) || Date.now()}`
   if (!isBuild) {
     env = loadEnv(process.argv[3] === '--mode' ? process.argv[4] : process.argv[3], root)
   } else {
@@ -86,6 +87,9 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
           javascriptEnabled: true
         }
       }
+    },
+    define: {
+      __APP_BUILD_ID__: JSON.stringify(buildId)
     },
     resolve: {
       extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json', '.less', '.css'],

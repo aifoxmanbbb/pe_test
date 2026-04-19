@@ -79,6 +79,67 @@ def _normalize_auth_gender(value: str | int | None) -> str:
     return '0'
 
 
+def _display_gender(value: str | None) -> str:
+    text = str(value or '').strip().lower()
+    if text in {'male', 'm', '1', 'ç”·'}:
+        return '男'
+    if text in {'female', 'f', '0', '2', 'å¥³'}:
+        return '女'
+    return '通用'
+
+
+def _format_rule_range(value) -> str:
+    if value is None:
+        return ''
+    if isinstance(value, (int, float)):
+        return str(value)
+    return str(value).strip()
+
+
+def _build_standard_item_help_lines(items: list[VadminSportStandardItem]) -> list[str]:
+    lines: list[str] = []
+    for item in items:
+        prefix = _display_gender(item.gender)
+        mode = str(item.calc_mode or 'segment').strip().lower()
+        if mode == 'segment':
+            segments = item.segment_json
+            if isinstance(segments, str):
+                try:
+                    segments = json.loads(segments)
+                except Exception:
+                    segments = None
+            if isinstance(segments, list):
+                for seg in segments:
+                    if not isinstance(seg, dict):
+                        continue
+                    if 'grade' in seg and isinstance(seg.get('rules'), list):
+                        grade = str(seg.get('grade') or '').strip()
+                        for rule in seg.get('rules') or []:
+                            if not isinstance(rule, dict):
+                                continue
+                            grade_prefix = f'/{grade}' if grade else ''
+                            lines.append(
+                                f"{prefix}{grade_prefix}：{_format_rule_range(rule.get('range'))} -> {rule.get('score', 0)}分"
+                            )
+                    else:
+                        lines.append(f"{prefix}：{_format_rule_range(seg.get('range'))} -> {seg.get('score', 0)}分")
+            continue
+
+        threshold_parts: list[str] = []
+        if item.pass_threshold not in (None, ''):
+            threshold_parts.append(f"及格 {item.pass_threshold}")
+        if item.excellent_threshold not in (None, ''):
+            threshold_parts.append(f"优秀 {item.excellent_threshold}")
+        if item.full_threshold not in (None, ''):
+            threshold_parts.append(f"满分 {item.full_threshold}")
+        if threshold_parts:
+            suffix = '，'.join(threshold_parts)
+            if item.max_score not in (None, '') and float(item.max_score or 0) > 0:
+                suffix = f"{suffix}，该项满分 {item.max_score}分"
+            lines.append(f"{prefix}：{suffix}")
+    return lines
+
+
 def _has_role(auth: Auth, role_key: str) -> bool:
     return role_key in (auth.role_keys or [])
 
@@ -587,12 +648,20 @@ async def get_standard_item_options(standard_id: int = Query(...), auth: Auth = 
     ).order_by(VadminSportStandardItem.sort.asc())
     items = (await auth.db.scalars(sql)).all()
     
-    seen = set()
+    grouped: dict[str, list[VadminSportStandardItem]] = {}
+    for item in items:
+        grouped.setdefault(item.item_code, []).append(item)
+
     result = []
-    for i in items:
-        if i.item_code not in seen:
-            seen.add(i.item_code)
-            result.append({"label": i.item_name, "value": i.item_code})
+    for item_code, code_items in grouped.items():
+        first = code_items[0]
+        result.append({
+            "label": first.item_name,
+            "value": item_code,
+            "help_lines": _build_standard_item_help_lines(code_items),
+            "calc_mode": first.calc_mode,
+            "item_name": first.item_name
+        })
     return SuccessResponse(result)
 
 # ─── 学校管理 ─────────────────────────────────────────────
