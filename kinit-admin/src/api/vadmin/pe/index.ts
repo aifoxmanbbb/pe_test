@@ -99,6 +99,6 @@ export const getPeBatchItemScoresApi = (params: {
   return request.get({ url: '/vadmin/pe/score/batch/students', params })
 }
 
-export const downloadPeScoreTemplateApi = (): Promise<IResponse<any>> => {
-  return request.get({ url: '/vadmin/pe/score/template' })
+export const downloadPeScoreTemplateApi = (params?: Record<string, any>): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/pe/score/template', params })
 }

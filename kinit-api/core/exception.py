@@ -83,9 +83,22 @@ def register_exception(app: FastAPI):
             print(exc.errors())
         # 打印栈信息，方便追踪排查异常
         logger.exception(exc)
-        msg = exc.errors()[0].get("msg")
-        if msg == "field required":
-            msg = "请求失败，缺少必填项！"
+        first_error = exc.errors()[0] if exc.errors() else {}
+        msg = first_error.get("msg") or "请求参数校验失败"
+        error_type = first_error.get("type")
+        loc = first_error.get("loc") or []
+        field = str(loc[-1]) if loc else ""
+        if msg in ("field required", "Field required") or error_type == "missing":
+            if field == "file" and (
+                    request.url.path.endswith("/student/import")
+                    or request.url.path.endswith("/score/import")
+                    or request.url.path.endswith("/standard/import")
+            ):
+                msg = "请选择要导入的 XLSX 文件"
+            elif field == "file":
+                msg = "请选择要上传的文件"
+            else:
+                msg = f"请求失败，缺少必填项：{field}！" if field else "请求失败，缺少必填项！"
         elif msg == "value is not a valid list":
             print(exc.errors())
             msg = f"类型错误，提交参数应该为列表！"

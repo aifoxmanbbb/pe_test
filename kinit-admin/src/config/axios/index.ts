@@ -5,16 +5,22 @@ import { config } from './config'
 const { default_headers } = config
 
 const request = (option: any) => {
-  const { url, method, params, data, headersType, responseType } = option
+  const { url, method, params, data, headersType, responseType, headers } = option
+  const isFormData = typeof FormData !== 'undefined' && data instanceof FormData
+  const requestHeaders = { ...(headers || {}) }
+  if (isFormData) {
+    delete requestHeaders['Content-Type']
+    delete requestHeaders['content-type']
+  } else if (!requestHeaders['Content-Type'] && !requestHeaders['content-type']) {
+    requestHeaders['Content-Type'] = headersType || default_headers
+  }
   return service({
     url: url,
     method,
     params,
     data,
     responseType: responseType,
-    headers: {
-      'Content-Type': headersType || default_headers
-    }
+    headers: requestHeaders
   })
 }
 export default {

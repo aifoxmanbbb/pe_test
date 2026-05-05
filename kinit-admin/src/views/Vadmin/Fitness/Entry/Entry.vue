@@ -3,10 +3,17 @@ import { onMounted, ref, computed } from 'vue'
 import { ContentWrap } from '@/components/ContentWrap'
 import { Search } from '@/components/Search'
 import { FormSchema } from '@/components/Form'
-import { ElMessage, ElCard, ElTable, ElTableColumn, ElInput, ElButton, ElTooltip, ElIcon } from 'element-plus'
+import { ElMessage, ElCard, ElTable, ElTableColumn, ElInput, ElButton, ElTooltip, ElIcon, ElDialog } from 'element-plus'
 import { QuestionFilled } from '@element-plus/icons-vue'
-import { getFitnessBatchOptionsApi, upsertFitnessScoresApi } from '@/api/vadmin/fitness'
+import {
+  confirmFitnessScoresApi,
+  downloadFitnessScoreTemplateApi,
+  getFitnessBatchOptionsApi,
+  importFitnessScoresApi,
+  upsertFitnessScoresApi
+} from '@/api/vadmin/fitness'
 import { getSchoolOptionsApi, getStandardItemOptionsApi, getStudentListApi } from '@/api/vadmin/sport'
+import ScoreImport from '@/views/Vadmin/Sport/components/ScoreImport.vue'
 
 defineOptions({ name: 'FitnessScoreEntry' })
 
@@ -22,10 +29,27 @@ const batchOptions = ref<any[]>([])
 const schoolOptions = ref<any[]>([])
 const itemOptions = ref<StandardItemOption[]>([])
 const studentList = ref<any[]>([])
+const importDialogVisible = ref(false)
 
 const currentItemOption = computed(() =>
   itemOptions.value.find((item) => item.value === searchParams.value?.item_code) || null
 )
+
+const currentBatchOption = computed(() =>
+  batchOptions.value.find((item) => item.value === searchParams.value?.batch_id) || null
+)
+
+const openImportDialog = () => {
+  if (!searchParams.value?.batch_id) {
+    ElMessage.warning('请先选择批次并查询')
+    return
+  }
+  importDialogVisible.value = true
+}
+
+const handleImportSuccess = () => {
+  if (searchParams.value?.batch_id) loadStudents()
+}
 
 const loadStandardItems = async (batchId?: number) => {
   const batch = batchOptions.value.find((item) => item.value === batchId)
@@ -70,7 +94,6 @@ const searchSchema = computed<FormSchema[]>(() => {
       field: 'batch_id',
       label: '体测批次',
       component: 'Select',
-      required: true,
       componentProps: { 
         options: batchOptions.value,
         filterable: true,
@@ -205,6 +228,7 @@ onMounted(async () => {
     <div class="mb-10px flex justify-between items-center">
       <div class="text-18px font-bold">体测成绩录入</div>
       <div>
+        <ElButton type="success" @click="openImportDialog">批量导入成绩</ElButton>
         <ElButton :type="entryMode === 'student' ? 'primary' : 'default'" @click="changeMode('student')">按学生录入</ElButton>
         <ElButton :type="entryMode === 'item' ? 'primary' : 'default'" @click="changeMode('item')">按项目录入</ElButton>
       </div>
@@ -257,6 +281,18 @@ onMounted(async () => {
         <ElButton type="primary" size="large" @click="submit" class="w-200px">提交并保存成绩</ElButton>
       </div>
     </ElCard>
+
+    <ElDialog v-model="importDialogVisible" title="批量导入体测成绩" width="920px">
+      <ScoreImport
+        biz-name="体测"
+        :batch-id="searchParams.batch_id"
+        :batch-label="currentBatchOption?.label || ''"
+        :download-template-api="downloadFitnessScoreTemplateApi"
+        :import-scores-api="importFitnessScoresApi"
+        :confirm-scores-api="confirmFitnessScoresApi"
+        @success="handleImportSuccess"
+      />
+    </ElDialog>
   </ContentWrap>
 </template>
 

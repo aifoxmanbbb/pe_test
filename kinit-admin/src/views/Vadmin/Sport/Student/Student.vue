@@ -16,6 +16,7 @@ import {
   getClassOptionsApi,
   getSchoolOptionsApi
 } from '@/api/vadmin/sport'
+import StudentImport from './components/Import.vue'
 
 defineOptions({ name: 'PEFStudent' })
 
@@ -81,6 +82,7 @@ const loadSchools = async () => {
 
 const { formRegister, formMethods } = useForm()
 const dialogVisible = ref(false)
+const importDialogVisible = ref(false)
 const currentId = ref<number | null>(null)
 
 const formSchema = reactive<FormSchema[]>([
@@ -166,6 +168,10 @@ const handleAdd = () => {
   )
 }
 
+const handleImport = () => {
+  importDialogVisible.value = true
+}
+
 const handleEdit = async (row: any) => {
   currentId.value = row.id
   dialogVisible.value = true
@@ -203,6 +209,7 @@ onMounted(() => {
     <Search :schema="searchSchema" @search="loadList" @reset="loadList" class="mb-10px" />
     <div class="mb-10px">
       <BaseButton type="primary" @click="handleAdd">新增学生</BaseButton>
+      <BaseButton type="success" class="ml-10px" @click="handleImport">批量导入学生</BaseButton>
     </div>
     <Table
       :columns="tableColumns"
@@ -219,6 +226,9 @@ onMounted(() => {
         <BaseButton type="primary" @click="submit">确定</BaseButton>
         <BaseButton @click="dialogVisible = false">取消</BaseButton>
       </template>
+    </ElDialog>
+    <ElDialog v-model="importDialogVisible" title="批量导入学生" width="820px" destroy-on-close>
+      <StudentImport @get-list="loadList" />
     </ElDialog>
   </ContentWrap>
 </template>

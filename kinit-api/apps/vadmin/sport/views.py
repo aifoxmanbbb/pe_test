@@ -1,13 +1,18 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from fastapi import APIRouter, Body, Depends, Query
+from datetime import datetime
+from fastapi import APIRouter, Body, Depends, File, Query, UploadFile
+from pydantic import ValidationError
 from sqlalchemy import select, false, true, func, or_
 from apps.vadmin.auth import models as auth_models
 from apps.vadmin.auth.models import VadminMenu, VadminRole, VadminUser
 from apps.vadmin.auth.utils.current import FullAdminAuth
 from apps.vadmin.auth.utils.validation.auth import Auth
 from application import settings
+from core.validator import vali_telephone
+from utils.excel.import_manage import ImportManage
+from utils.excel.write_xlsx import WriteXlsx
 from utils.response import SuccessResponse, ErrorResponse
 from .models import (
     VadminPefSchool,
@@ -524,6 +529,163 @@ async def _sync_student_login_user(
     ))
     return user, None
 
+
+def _clean_import_text(value) -> str:
+    if value is None:
+        return ''
+    text = str(value).strip()
+    if text.endswith('.0') and text[:-2].isdigit():
+        return text[:-2]
+    return text
+
+
+def _normalize_student_import_birthday(value) -> str | None:
+    text = _clean_import_text(value)
+    if not text:
+        return None
+    text = text.replace('/', '-').replace('.', '-').split(' ')[0]
+    try:
+        return datetime.strptime(text, '%Y-%m-%d').date().isoformat()
+    except ValueError:
+        raise ValueError('出生日期格式应为 YYYY-MM-DD')
+
+
+def _normalize_student_import_active(value) -> bool:
+    text = _clean_import_text(value).lower()
+    if not text:
+        return True
+    return text not in {'0', 'false', 'no', 'n', '否', '停用', '禁用'}
+
+
+STUDENT_IMPORT_FIELD_LABELS = {
+    "student_no": "学号",
+    "name": "姓名",
+    "phone": "手机号",
+    "gender": "性别",
+    "school_id": "学校",
+    "grade_id": "年级",
+    "class_id": "班级",
+    "birthday": "出生日期",
+    "is_active": "是否启用",
+    "remark": "备注"
+}
+
+
+def _format_student_import_validation_error(exc: ValidationError) -> str:
+    messages: list[str] = []
+    for error in exc.errors():
+        loc = error.get("loc") or []
+        field = str(loc[-1]) if loc else ""
+        label = STUDENT_IMPORT_FIELD_LABELS.get(field, field or "数据")
+        error_type = str(error.get("type") or "")
+        message = str(error.get("msg") or "").replace("Value error, ", "")
+        if error_type == "missing" or message == "Field required":
+            messages.append(f"{label}不能为空")
+        elif "Input should be a valid integer" in message:
+            messages.append(f"{label}格式不正确")
+        elif "Input should be a valid boolean" in message:
+            messages.append(f"{label}只能填写 是/否")
+        else:
+            messages.append(f"{label}：{message}")
+    return "；".join(messages) or "数据格式不正确"
+
+
+def _student_import_headers() -> list[dict]:
+    return [
+        {"label": "学号", "field": "student_no", "required": True},
+        {"label": "姓名", "field": "name", "required": True},
+        {"label": "手机号", "field": "phone", "required": True, "rules": [vali_telephone]},
+        {
+            "label": "性别",
+            "field": "gender",
+            "required": True,
+            "options": [
+                {"label": "男", "value": "male"},
+                {"label": "女", "value": "female"}
+            ]
+        },
+        {"label": "学校", "field": "school_name", "required": True},
+        {"label": "年级", "field": "grade_name", "required": True},
+        {"label": "班级", "field": "class_name", "required": True},
+        {"label": "出生日期", "field": "birthday", "required": False},
+        {
+            "label": "是否启用",
+            "field": "is_active",
+            "required": False,
+            "options": [
+                {"label": "是", "value": True},
+                {"label": "否", "value": False}
+            ]
+        },
+        {"label": "备注", "field": "remark", "required": False}
+    ]
+
+
+async def _build_student_import_headers(db, auth: Auth) -> list[dict]:
+    headers = _student_import_headers()
+    school_sql = select(VadminPefSchool).where(
+        VadminPefSchool.is_delete == false(),
+        VadminPefSchool.is_active == true()
+    ).order_by(VadminPefSchool.sort.asc(), VadminPefSchool.id.asc())
+    grade_sql = select(VadminPefGrade).where(
+        VadminPefGrade.is_delete == false(),
+        VadminPefGrade.is_active == true()
+    ).order_by(VadminPefGrade.sort.asc(), VadminPefGrade.id.asc())
+    class_sql = select(VadminPefClass).where(
+        VadminPefClass.is_delete == false(),
+        VadminPefClass.is_active == true()
+    ).order_by(VadminPefClass.sort.asc(), VadminPefClass.id.asc())
+
+    if not is_global_scope(auth):
+        school_ids = auth.school_ids or [-1]
+        school_sql = school_sql.where(VadminPefSchool.id.in_(school_ids))
+        grade_sql = grade_sql.where(VadminPefGrade.school_id.in_(school_ids))
+        if _has_role(auth, ROLE_TEACHER_COACH):
+            class_sql = class_sql.where(VadminPefClass.id.in_(auth.class_ids or [-1]))
+        else:
+            class_sql = class_sql.where(VadminPefClass.school_id.in_(school_ids))
+
+    schools = (await db.scalars(school_sql)).all()
+    grades = (await db.scalars(grade_sql)).all()
+    classes = (await db.scalars(class_sql)).all()
+
+    headers[4]["options"] = [{"label": item.school_name, "value": item.school_name} for item in schools]
+    headers[5]["options"] = [{"label": item.grade_name, "value": item.grade_name} for item in grades]
+    headers[6]["options"] = [{"label": item.class_name, "value": item.class_name} for item in classes]
+    return headers
+
+
+async def _resolve_student_import_scope(db, auth: Auth, school_name: str, grade_name: str, class_name: str):
+    school = await db.scalar(select(VadminPefSchool).where(
+        VadminPefSchool.school_name == school_name,
+        VadminPefSchool.is_delete == false(),
+        VadminPefSchool.is_active == true()
+    ))
+    if not school:
+        raise ValueError('学校不存在或未启用')
+
+    grade = await db.scalar(select(VadminPefGrade).where(
+        VadminPefGrade.school_id == school.id,
+        VadminPefGrade.grade_name == grade_name,
+        VadminPefGrade.is_delete == false(),
+        VadminPefGrade.is_active == true()
+    ))
+    if not grade:
+        raise ValueError('年级不存在或未启用')
+
+    class_obj = await db.scalar(select(VadminPefClass).where(
+        VadminPefClass.school_id == school.id,
+        VadminPefClass.grade_id == grade.id,
+        VadminPefClass.class_name == class_name,
+        VadminPefClass.is_delete == false(),
+        VadminPefClass.is_active == true()
+    ))
+    if not class_obj:
+        raise ValueError('班级不存在或未启用')
+    if not _student_visible(auth, school.id, class_obj.id):
+        raise ValueError('无权限导入该班级学生')
+    return school, grade, class_obj
+
 # ─── 基础选项接口 ──────────────────────────────────────────
 
 @app.get("/options/schools", summary="学校选项")
@@ -889,6 +1051,99 @@ async def get_student_list(
         data.append(_serialize(obj, schemas.StudentOut, school_name=school_name, grade_name=grade_name, class_name=class_name))
     
     return SuccessResponse({"items": data, "total": total})
+
+
+@app.get("/student/import/template", summary="下载学生批量导入模板")
+async def download_student_import_template(auth: Auth = Depends(FullAdminAuth(permissions=[STUDENT_PERM]))):
+    if not _can_manage_student(auth):
+        return ErrorResponse("无权限操作")
+    headers = await _build_student_import_headers(auth.db, auth)
+    writer = WriteXlsx()
+    writer.create_excel(sheet_name="学生导入模板", save_static=True)
+    writer.generate_template(headers)
+    writer.close()
+    return SuccessResponse({"url": writer.get_file_url(), "filename": "学生导入模板.xlsx"})
+
+
+@app.post("/student/import", summary="批量导入学生")
+async def import_students(
+    file: UploadFile | None = File(None),
+    auth: Auth = Depends(FullAdminAuth(permissions=[STUDENT_PERM]))
+):
+    if not _can_manage_student(auth):
+        return ErrorResponse("无权限操作")
+    if not file:
+        return ErrorResponse("请选择要导入的 XLSX 文件")
+    headers = await _build_student_import_headers(auth.db, auth)
+    importer = ImportManage(file, headers)
+    await importer.get_table_data()
+    importer.check_table_data()
+
+    seen_student_nos: set[str] = set()
+    for item in list(importer.success):
+        old_data_list = item.pop("old_data_list")
+        try:
+            student_no = _clean_import_text(item.get("student_no"))
+            if student_no in seen_student_nos:
+                raise ValueError("同一导入文件中学号重复")
+            seen_student_nos.add(student_no)
+
+            school_name = _clean_import_text(item.get("school_name"))
+            grade_name = _clean_import_text(item.get("grade_name"))
+            class_name = _clean_import_text(item.get("class_name"))
+            school, grade, class_obj = await _resolve_student_import_scope(
+                auth.db,
+                auth,
+                school_name,
+                grade_name,
+                class_name
+            )
+
+            data = schemas.StudentIn(
+                student_no=student_no,
+                name=_clean_import_text(item.get("name")),
+                phone=_clean_import_text(item.get("phone")),
+                gender=_clean_import_text(item.get("gender")),
+                school_id=school.id,
+                grade_id=grade.id,
+                class_id=class_obj.id,
+                birthday=_normalize_student_import_birthday(item.get("birthday")),
+                is_active=_normalize_student_import_active(item.get("is_active")),
+                remark=_clean_import_text(item.get("remark")) or None
+            )
+
+            obj = await auth.db.scalar(select(VadminPefStudent).where(
+                VadminPefStudent.student_no == data.student_no,
+                VadminPefStudent.is_delete == false()
+            ))
+            if obj and not _student_visible(auth, obj.school_id, obj.class_id):
+                raise ValueError("无权限更新该学生数据")
+
+            user, error = await _sync_student_login_user(auth.db, obj, data)
+            if error:
+                raise ValueError(error)
+
+            payload = data.model_dump()
+            payload["user_id"] = user.id
+            if obj:
+                for key, value in payload.items():
+                    setattr(obj, key, value)
+            else:
+                auth.db.add(VadminPefStudent(**payload))
+            await auth.db.flush()
+        except ValidationError as exc:
+            old_data_list.append(_format_student_import_validation_error(exc))
+            importer.add_error_data(old_data_list)
+        except ValueError as exc:
+            old_data_list.append(str(exc))
+            importer.add_error_data(old_data_list)
+
+    return SuccessResponse({
+        "success_number": importer.success_number,
+        "error_number": importer.error_number,
+        "error_url": importer.generate_error_url()
+    })
+
 
 @app.post("/student", summary="创建学生")
 async def create_student(data: schemas.StudentIn, auth: Auth = Depends(FullAdminAuth(permissions=[STUDENT_PERM]))):

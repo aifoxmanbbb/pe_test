@@ -7,6 +7,27 @@ import request from '@/config/axios'
 
 const { result_code, unauthorized_code, request_timeout } = config
 
+const normalizeBackendMessage = (message: any, url?: string) => {
+  const text = Array.isArray(message) ? message.join('；') : String(message || '')
+  if (text === 'Field required' || text === 'field required') {
+    return url?.includes('/student/import') ? '请选择要导入的 XLSX 文件' : '请补全必填项'
+  }
+  return text
+}
+
+const getErrorResponseMessage = (error: AxiosError) => {
+  const data = error.response?.data as any
+  const url = error.response?.config.url
+  if (data?.message) {
+    return normalizeBackendMessage(data.message, url)
+  }
+  if (Array.isArray(data?.detail) && data.detail.length > 0) {
+    const first = data.detail[0]
+    return normalizeBackendMessage(first?.msg || first, url)
+  }
+  return ''
+}
+
 // 创建axios实例
 const service: AxiosInstance = axios.create({
   baseURL: '/api', // api 的 base_url
@@ -73,7 +94,10 @@ service.interceptors.response.use(
   (response: AxiosResponse<any>) => {
     // 这个状态码是和后端约定好的
     const code = response.data.code || unauthorized_code
-    const message = response.data.message || '后端接口无返回内容'
+    const message = normalizeBackendMessage(
+      response.data.message || '后端接口无返回内容',
+      response.config.url
+    )
     const refresh = response.headers['if-refresh']
 
     if (response.config.responseType === 'blob') {
@@ -103,7 +127,7 @@ service.interceptors.response.use(
   },
   (error: AxiosError) => {
     console.log('err', error)
-    let { message } = error
+    let message = getErrorResponseMessage(error) || error.message
     const authStore = useAuthStoreWithOut()
     const status = error.response?.status
     switch (status) {

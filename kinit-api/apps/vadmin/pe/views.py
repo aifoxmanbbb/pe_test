@@ -5,7 +5,7 @@ import json
 import re
 import logging
 from typing import Any
-from fastapi import APIRouter, Depends, Body, Query, File, UploadFile
+from fastapi import APIRouter, Depends, Body, Query, File, Form, UploadFile
 from sqlalchemy import select, false, true, func, or_
 from apps.vadmin.auth.utils.current import AllUserAuth, FullAdminAuth
 from apps.vadmin.auth.utils.validation.auth import Auth
@@ -1430,7 +1430,14 @@ async def upsert_scores(
         payload: dict = Body(...),
         auth: Auth = Depends(FullAdminAuth(permissions=['pe.score.entry']))
 ):
+    if not payload.get('batch_id'):
+        return ErrorResponse('请选择批次')
     batch_id = int(payload.get('batch_id'))
+    scores = payload.get('scores') or []
+    if scores and payload.get('validate_import'):
+        _, scores, import_errors = await BatchImportService.validate_score_rows(auth.db, auth, 'pe', batch_id, scores)
+        if import_errors:
+            return ErrorResponse(BatchImportService.format_score_errors(import_errors), data=import_errors)
     batch = (await auth.db.scalars(select(VadminSportBatch).where(
         VadminSportBatch.is_delete == false(),
         VadminSportBatch.biz_type == 'pe',
@@ -1452,7 +1459,6 @@ async def upsert_scores(
     for rule in standard_items:
         item_rule_map.setdefault(rule.item_code, []).append(rule)
 
-    scores = payload.get('scores') or []
     count = 0
 
     student_nos = [item.get('student_no') for item in scores if item.get('student_no')]
@@ -1735,15 +1741,18 @@ async def export_report(
 
 @app.get('/score/template', summary='下载体考成绩导入模板')
 async def download_score_template(
+        batch_id: int | None = Query(None),
         auth: Auth = Depends(FullAdminAuth(permissions=['pe.score.entry']))
 ):
-    headers = ["学号", "姓名", "性别", "学校", "年级", "班级", "项目编码", "项目名称", "成绩"]
+    if not batch_id:
+        return ErrorResponse('请先选择批次再下载模板')
+    headers, options = await BatchImportService.build_score_template_config(auth.db, auth, 'pe', batch_id)
     from utils.excel.write_xlsx import WriteXlsx
     writer = WriteXlsx()
     filename = "体考成绩导入模板.xlsx"
     writer.create_excel(file_path=filename, save_static=True)
-    header_dicts = [{"label": h} for h in headers]
-    writer.generate_template(header_dicts)
+    writer.generate_template(headers)
+    BatchImportService.apply_score_template_validations(writer, options)
     writer.close()
     return SuccessResponse({'url': writer.get_file_url()})
 
@@ -1770,11 +1779,19 @@ async def confirm_standard(
 
 @app.post('/score/import', summary='体考成绩 Excel 导入解析')
 async def import_scores(
-        file: UploadFile = File(...),
+        batch_id: int | None = Form(None),
+        file: UploadFile | None = File(None),
         auth: Auth = Depends(FullAdminAuth(permissions=['pe.score.entry']))
 ):
+    if not batch_id:
+        return ErrorResponse('请先选择批次')
+    if not file:
+        return ErrorResponse('请选择要导入的 XLSX 文件')
     content = await file.read()
     scores = BatchImportService.parse_score_excel(content)
+    _, scores, import_errors = await BatchImportService.validate_score_rows(auth.db, auth, 'pe', batch_id, scores)
+    if import_errors:
+        return ErrorResponse(BatchImportService.format_score_errors(import_errors), data=import_errors)
     return SuccessResponse(scores)
 
 

@@ -7,6 +7,7 @@ import { ElDialog, ElMessage, ElMessageBox, ElTag } from 'element-plus'
 import { Table, TableColumn } from '@/components/Table'
 import { BaseButton } from '@/components/Button'
 import { useForm } from '@/hooks/web/useForm'
+import { useValidator } from '@/hooks/web/useValidator'
 import {
   createFitnessBatchApi,
   deleteFitnessBatchApi,
@@ -17,6 +18,8 @@ import {
 import { getClassOptionsApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/api/vadmin/sport'
 
 defineOptions({ name: 'FitnessBatch' })
+
+const { required } = useValidator()
 
 const batchList = ref<any[]>([])
 const total = ref(0)
@@ -29,22 +32,53 @@ const schoolOptions = ref<any[]>([])
 const gradeOptions = ref<any[]>([])
 const classOptions = ref<any[]>([])
 
+const SCOPE_ALL_VALUE = '__scope_all__'
+const SCOPE_ALL_OPTION = { label: '不区分', value: SCOPE_ALL_VALUE }
+
 const replaceOptions = (target: any[], rows: any[]) => {
   target.splice(0, target.length, ...(rows || []))
 }
 
+const toApiScopeValue = (value: any) => (value === SCOPE_ALL_VALUE ? '' : value)
+const fromApiScopeValue = (value: any) => value || SCOPE_ALL_VALUE
+const mapSchoolOptions = (rows: any[] = []) => [
+  SCOPE_ALL_OPTION,
+  ...rows.map((item: any) => ({ label: item.label, value: item.school_name }))
+]
+const mapGradeOptions = (rows: any[] = []) => [
+  SCOPE_ALL_OPTION,
+  ...rows.map((item: any) => ({ label: item.label, value: item.grade_name || item.value }))
+]
+const mapClassOptions = (rows: any[] = []) => [
+  SCOPE_ALL_OPTION,
+  ...rows.map((item: any) => ({ label: item.label, value: item.class_name || item.value }))
+]
+const normalizeBatchForm = (row: any) => ({
+  ...row,
+  school_name: fromApiScopeValue(row?.school_name),
+  grade_name: fromApiScopeValue(row?.grade_name),
+  class_name: fromApiScopeValue(row?.class_name)
+})
+const normalizeBatchPayload = (data: any) => ({
+  ...data,
+  school_name: toApiScopeValue(data?.school_name),
+  grade_name: toApiScopeValue(data?.grade_name),
+  class_name: toApiScopeValue(data?.class_name)
+})
+
 const searchSchema = computed<FormSchema[]>(() => [{ field: 'batch_name', label: '批次名称', component: 'Input' }])
 
 const tableColumns = reactive<TableColumn[]>([
-  { field: 'id', label: 'ID', width: '60px' },
-  { field: 'batch_name', label: '批次名称', minWidth: '180px' },
-  { field: 'standard_name', label: '评分标准', minWidth: '260px' },
-  { field: 'school_name', label: '学校', minWidth: '120px' },
-  { field: 'grade_name', label: '年级', width: '100px' },
-  { field: 'class_name', label: '班级', width: '100px' },
+  { field: 'id', label: 'ID', width: '60px', show: true },
+  { field: 'batch_name', label: '批次名称', minWidth: '180px', show: true },
+  { field: 'standard_name', label: '评分标准', minWidth: '260px', show: true },
+  { field: 'school_name', label: '学校', minWidth: '120px', show: true },
+  { field: 'grade_name', label: '年级', width: '100px', show: true },
+  { field: 'class_name', label: '班级', width: '100px', show: true },
   {
     field: 'status',
     label: '状态',
+    show: true,
     slots: {
       default: (data: any) => <ElTag>{data.row.status}</ElTag>
     }
@@ -54,6 +88,7 @@ const tableColumns = reactive<TableColumn[]>([
     label: '操作',
     width: '150px',
     fixed: 'right',
+    show: true,
     slots: {
       default: (data: any) => (
         <>
@@ -91,10 +126,7 @@ const loadFormOptions = async () => {
     )
   }
   if (schoolRes?.data) {
-    replaceOptions(
-      schoolOptions.value,
-      schoolRes.data.map((item: any) => ({ label: item.label, value: item.school_name }))
-    )
+    replaceOptions(schoolOptions.value, mapSchoolOptions(schoolRes.data))
   }
 }
 
@@ -103,13 +135,18 @@ const dialogVisible = ref(false)
 const currentId = ref<number | null>(null)
 
 const formSchema = reactive<FormSchema[]>([
-  { field: 'batch_name', label: '批次名称', component: 'Input', required: true },
+  {
+    field: 'batch_name',
+    label: '批次名称',
+    component: 'Input',
+    formItemProps: { rules: [required('请输入批次名称')] }
+  },
   {
     field: 'standard_id',
     label: '评分标准',
     component: 'Select',
-    required: true,
-    componentProps: { options: standardOptions.value }
+    componentProps: { options: standardOptions.value },
+    formItemProps: { rules: [required('请选择评分标准')] }
   },
   {
     field: 'stage_type',
@@ -118,10 +155,7 @@ const formSchema = reactive<FormSchema[]>([
     componentProps: {
       onChange: async (val: string) => {
         const schoolRes = await getSchoolOptionsApi(val ? { stage_type: val } : undefined).catch(() => null)
-        replaceOptions(
-          schoolOptions.value,
-          schoolRes?.data ? schoolRes.data.map((item: any) => ({ label: item.label, value: item.school_name })) : []
-        )
+        replaceOptions(schoolOptions.value, mapSchoolOptions(schoolRes?.data || []))
         formMethods.setValues({ school_name: null, grade_name: null, class_name: null })
         replaceOptions(gradeOptions.value, [])
         replaceOptions(classOptions.value, [])
@@ -132,7 +166,8 @@ const formSchema = reactive<FormSchema[]>([
         { label: '高中', value: 'high' },
         { label: '大学', value: 'university' }
       ]
-    }
+    },
+    formItemProps: { rules: [required('请选择针对学段')] }
   },
   {
     field: 'school_name',
@@ -141,14 +176,19 @@ const formSchema = reactive<FormSchema[]>([
     componentProps: {
       options: schoolOptions.value,
       onChange: async (val: string) => {
+        if (val === SCOPE_ALL_VALUE) {
+          replaceOptions(gradeOptions.value, [SCOPE_ALL_OPTION])
+          replaceOptions(classOptions.value, [SCOPE_ALL_OPTION])
+          formMethods.setValues({ grade_name: SCOPE_ALL_VALUE, class_name: SCOPE_ALL_VALUE })
+          return
+        }
         const res = await getGradeOptionsApi({ school_name: val }).catch(() => null)
-        replaceOptions(
-          gradeOptions.value,
-          res?.data ? res.data.map((item: any) => ({ label: item.label, value: item.grade_name })) : []
-        )
+        replaceOptions(gradeOptions.value, mapGradeOptions(res?.data || []))
+        replaceOptions(classOptions.value, [])
         formMethods.setValues({ grade_name: null, class_name: null })
       }
-    }
+    },
+    formItemProps: { rules: [required('请选择学校名称')] }
   },
   {
     field: 'grade_name',
@@ -157,21 +197,25 @@ const formSchema = reactive<FormSchema[]>([
     componentProps: {
       options: gradeOptions.value,
       onChange: async (val: string) => {
+        if (val === SCOPE_ALL_VALUE) {
+          replaceOptions(classOptions.value, [SCOPE_ALL_OPTION])
+          formMethods.setValues({ class_name: SCOPE_ALL_VALUE })
+          return
+        }
         const formData = await formMethods.getFormData()
         const res = await getClassOptionsApi({ school_name: formData?.school_name, grade_name: val }).catch(() => null)
-        replaceOptions(
-          classOptions.value,
-          res?.data ? res.data.map((item: any) => ({ label: item.label, value: item.class_name })) : []
-        )
+        replaceOptions(classOptions.value, mapClassOptions(res?.data || []))
         formMethods.setValues({ class_name: null })
       }
-    }
+    },
+    formItemProps: { rules: [required('请选择年级')] }
   },
   {
     field: 'class_name',
     label: '班级',
     component: 'Select',
-    componentProps: { options: classOptions.value }
+    componentProps: { options: classOptions.value },
+    formItemProps: { rules: [required('请选择班级')] }
   },
   {
     field: 'status',
@@ -184,13 +228,16 @@ const formSchema = reactive<FormSchema[]>([
         { label: '进行中', value: 'ongoing' },
         { label: '已结束', value: 'finished' }
       ]
-    }
+    },
+    formItemProps: { rules: [required('请选择状态')] }
   }
 ])
 
 const handleAdd = () => {
   currentId.value = null
   dialogVisible.value = true
+  replaceOptions(gradeOptions.value, [])
+  replaceOptions(classOptions.value, [])
   nextTick(() => formMethods.setValues({ status: 'draft', stage_type: 'mid' }))
 }
 
@@ -199,26 +246,21 @@ const handleEdit = async (row: any) => {
   dialogVisible.value = true
   const schoolRes = await getSchoolOptionsApi(row.stage_type ? { stage_type: row.stage_type } : undefined).catch(() => null)
   if (schoolRes?.data) {
-    replaceOptions(
-      schoolOptions.value,
-      schoolRes.data.map((item: any) => ({ label: item.label, value: item.school_name }))
-    )
+    replaceOptions(schoolOptions.value, mapSchoolOptions(schoolRes.data))
   }
   if (row.school_name) {
     const gradeRes = await getGradeOptionsApi({ school_name: row.school_name }).catch(() => null)
-    replaceOptions(
-      gradeOptions.value,
-      gradeRes?.data ? gradeRes.data.map((item: any) => ({ label: item.label, value: item.grade_name || item.value })) : []
-    )
+    replaceOptions(gradeOptions.value, mapGradeOptions(gradeRes?.data || []))
+  } else {
+    replaceOptions(gradeOptions.value, [SCOPE_ALL_OPTION])
   }
   if (row.grade_name) {
     const classRes = await getClassOptionsApi({ school_name: row.school_name, grade_name: row.grade_name }).catch(() => null)
-    replaceOptions(
-      classOptions.value,
-      classRes?.data ? classRes.data.map((item: any) => ({ label: item.label, value: item.class_name || item.value })) : []
-    )
+    replaceOptions(classOptions.value, mapClassOptions(classRes?.data || []))
+  } else {
+    replaceOptions(classOptions.value, [SCOPE_ALL_OPTION])
   }
-  nextTick(() => formMethods.setValues(row))
+  nextTick(() => formMethods.setValues(normalizeBatchForm(row)))
 }
 
 const handleDelete = (row: any) => {
@@ -229,11 +271,15 @@ const handleDelete = (row: any) => {
 }
 
 const submit = async () => {
+  const elForm = await formMethods.getElFormExpose()
+  const valid = await elForm?.validate().catch(() => false)
+  if (!valid) return
   const data = await formMethods.getFormData()
   if (!data) return
+  const payload = normalizeBatchPayload(data)
   const res = currentId.value
-    ? await updateFitnessBatchApi(currentId.value, data)
-    : await createFitnessBatchApi(data)
+    ? await updateFitnessBatchApi(currentId.value, payload)
+    : await createFitnessBatchApi(payload)
   if (res) {
     ElMessage.success('保存成功')
     dialogVisible.value = false

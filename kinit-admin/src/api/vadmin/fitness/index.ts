@@ -114,6 +114,8 @@ export const getFitnessBatchItemScoresApi = (params: {
   return request.get({ url: '/vadmin/fitness/score/batch/students', params })
 }
 
-export const downloadFitnessScoreTemplateApi = (): Promise<IResponse<any>> => {
-  return request.get({ url: '/vadmin/fitness/score/template' })
+export const downloadFitnessScoreTemplateApi = (
+  params?: Record<string, any>
+): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/fitness/score/template', params })
 }

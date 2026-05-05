@@ -76,3 +76,15 @@ export const createStudentApi = (data: any): Promise<IResponse<any>> => {
 export const updateStudentApi = (id: number, data: any): Promise<IResponse<any>> => {
   return request.put({ url: `/vadmin/sport/student/${id}`, data })
 }
+
+export const getStudentImportTemplateApi = (): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/sport/student/import/template' })
+}
+
+export const postImportStudentsApi = (data: FormData): Promise<IResponse<any>> => {
+  return request.post({
+    url: '/vadmin/sport/student/import',
+    headersType: 'multipart/form-data',
+    data
+  })
+}
