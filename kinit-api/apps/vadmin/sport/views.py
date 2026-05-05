@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, Depends, File, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 from sqlalchemy import select, false, true, func, or_
+from xlsxwriter.utility import xl_col_to_name
 from apps.vadmin.auth import models as auth_models
 from apps.vadmin.auth.models import VadminMenu, VadminRole, VadminUser
 from apps.vadmin.auth.utils.current import FullAdminAuth
@@ -656,6 +657,159 @@ async def _build_student_import_headers(db, auth: Auth) -> list[dict]:
     return headers
 
 
+def _append_unique(target: list[str], value: str | None):
+    text = str(value or "").strip()
+    if text and text not in target:
+        target.append(text)
+
+
+async def _build_student_import_scope_options(db, auth: Auth) -> dict:
+    sql = (
+        select(
+            VadminPefSchool.id,
+            VadminPefSchool.school_name,
+            VadminPefGrade.id,
+            VadminPefGrade.grade_name,
+            VadminPefClass.id,
+            VadminPefClass.class_name
+        )
+        .select_from(VadminPefClass)
+        .join(VadminPefSchool, VadminPefClass.school_id == VadminPefSchool.id)
+        .join(VadminPefGrade, VadminPefClass.grade_id == VadminPefGrade.id)
+        .where(
+            VadminPefSchool.is_delete == false(),
+            VadminPefGrade.is_delete == false(),
+            VadminPefClass.is_delete == false(),
+            VadminPefSchool.is_active == true(),
+            VadminPefGrade.is_active == true(),
+            VadminPefClass.is_active == true()
+        )
+        .order_by(VadminPefSchool.sort.asc(), VadminPefGrade.sort.asc(), VadminPefClass.sort.asc())
+    )
+    if not is_global_scope(auth):
+        school_ids = auth.school_ids or [-1]
+        sql = sql.where(VadminPefSchool.id.in_(school_ids))
+        if _has_role(auth, ROLE_TEACHER_COACH):
+            sql = sql.where(VadminPefClass.id.in_(auth.class_ids or [-1]))
+
+    schools: list[str] = []
+    grades_by_school: dict[str, list[str]] = {}
+    classes_by_school_grade: dict[str, list[str]] = {}
+    for _, school_name, _, grade_name, _, class_name in (await db.execute(sql)).all():
+        school = str(school_name or "").strip()
+        grade = str(grade_name or "").strip()
+        class_text = str(class_name or "").strip()
+        if not school or not grade or not class_text:
+            continue
+        _append_unique(schools, school)
+        grades_by_school.setdefault(school, [])
+        _append_unique(grades_by_school[school], grade)
+        key = f"{school}|{grade}"
+        classes_by_school_grade.setdefault(key, [])
+        _append_unique(classes_by_school_grade[key], class_text)
+
+    return {
+        "schools": schools,
+        "grades_by_school": grades_by_school,
+        "classes_by_school_grade": classes_by_school_grade
+    }
+
+
+def _apply_student_import_template_validations(writer: WriteXlsx, options: dict, max_row: int = 1000):
+    if not writer or not writer.wb or not writer.sheet:
+        return
+
+    wb = writer.wb
+    sheet = writer.sheet
+    option_sheet = wb.add_worksheet("_student_options")
+    option_sheet.hide()
+
+    def unique_values(values: list[str]) -> list[str]:
+        clean_values: list[str] = []
+        for value in values:
+            _append_unique(clean_values, value)
+        return clean_values
+
+    def write_column(col: int, values: list[str]) -> list[str]:
+        clean_values = unique_values(values)
+        for row_idx, value in enumerate(clean_values):
+            option_sheet.write(row_idx, col, value)
+        return clean_values
+
+    def define_column_name(name: str, col: int, values: list[str]) -> str | None:
+        clean_values = write_column(col, values)
+        if not clean_values:
+            return None
+        col_name = xl_col_to_name(col)
+        wb.define_name(name, f"='_student_options'!${col_name}$1:${col_name}${len(clean_values)}")
+        return name
+
+    school_name = define_column_name("student_school_list", 0, options.get("schools") or [])
+    if school_name:
+        sheet.data_validation(1, 4, max_row, 4, {'validate': 'list', 'source': f"={school_name}"})
+
+    grade_start_col = 10
+    schools = options.get("schools") or []
+    grades_by_school = options.get("grades_by_school") or {}
+    school_grade_map_rows = 0
+    for index, school in enumerate(schools):
+        grades = unique_values(grades_by_school.get(school) or [])
+        if not grades:
+            continue
+        name = f"student_grade_{index + 1}"
+        define_column_name(name, grade_start_col + index, grades)
+        option_sheet.write(school_grade_map_rows, 1, school)
+        option_sheet.write(school_grade_map_rows, 2, name)
+        school_grade_map_rows += 1
+    if school_grade_map_rows:
+        wb.define_name("student_school_grade_map", f"='_student_options'!$B$1:$C${school_grade_map_rows}")
+        sheet.data_validation(
+            1,
+            5,
+            max_row,
+            5,
+            {
+                'validate': 'list',
+                'source': '=INDIRECT(VLOOKUP($E2,student_school_grade_map,2,FALSE))'
+            }
+        )
+
+    class_start_col = 80
+    classes_by_school_grade = options.get("classes_by_school_grade") or {}
+    class_keys = list(classes_by_school_grade.keys())
+    grade_class_map_rows = 0
+    for index, key in enumerate(class_keys):
+        classes = unique_values(classes_by_school_grade.get(key) or [])
+        if not classes:
+            continue
+        name = f"student_class_{index + 1}"
+        define_column_name(name, class_start_col + index, classes)
+        option_sheet.write(grade_class_map_rows, 3, key)
+        option_sheet.write(grade_class_map_rows, 4, name)
+        grade_class_map_rows += 1
+    if grade_class_map_rows:
+        wb.define_name("student_grade_class_map", f"='_student_options'!$D$1:$E${grade_class_map_rows}")
+        sheet.data_validation(
+            1,
+            6,
+            max_row,
+            6,
+            {
+                'validate': 'list',
+                'source': '=INDIRECT(VLOOKUP($E2&"|"&$F2,student_grade_class_map,2,FALSE))'
+            }
+        )
+
+
+async def _build_student_import_template_config(db, auth: Auth) -> tuple[list[dict], dict]:
+    headers = await _build_student_import_headers(db, auth)
+    scope_options = await _build_student_import_scope_options(db, auth)
+    template_headers = [dict(item) for item in headers]
+    for index in (4, 5, 6):
+        template_headers[index].pop("options", None)
+    return template_headers, scope_options
+
+
 async def _resolve_student_import_scope(db, auth: Auth, school_name: str, grade_name: str, class_name: str):
     school = await db.scalar(select(VadminPefSchool).where(
         VadminPefSchool.school_name == school_name,
@@ -1061,10 +1215,11 @@ async def download_student_import_template(
 ):
     if not _can_manage_student(auth):
         return ErrorResponse("无权限操作")
-    headers = await _build_student_import_headers(auth.db, auth)
+    headers, scope_options = await _build_student_import_template_config(auth.db, auth)
     writer = WriteXlsx()
     writer.create_excel(sheet_name="学生导入模板", save_static=True)
     writer.generate_template(headers)
+    _apply_student_import_template_validations(writer, scope_options)
     writer.close()
     if direct:
         return FileResponse(

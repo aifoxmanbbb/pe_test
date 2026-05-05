@@ -84,7 +84,7 @@ export const getStudentImportTemplateApi = (): Promise<IResponse<any>> => {
 export const downloadStudentImportTemplateApi = (): Promise<any> => {
   return request.get({
     url: '/vadmin/sport/student/import/template',
-    params: { direct: true },
+    params: { direct: true, _t: Date.now() },
     responseType: 'blob'
   })
 }
