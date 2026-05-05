@@ -16,6 +16,7 @@ import {
 } from 'element-plus'
 
 type ApiResult = Promise<IResponse<any>>
+type DownloadTemplateResult = Promise<any>
 
 const props = defineProps({
   batchId: {
@@ -31,7 +32,7 @@ const props = defineProps({
     required: true
   },
   downloadTemplateApi: {
-    type: Function as PropType<(params?: Record<string, any>) => ApiResult>,
+    type: Function as PropType<(params?: Record<string, any>) => DownloadTemplateResult>,
     required: true
   },
   importScoresApi: {
@@ -110,14 +111,17 @@ const downloadTemplate = async () => {
   }
   ElMessage.info('正在下载模板')
   const res = await props.downloadTemplateApi({ batch_id: Number(props.batchId) })
-  const url = res?.data?.url
-  if (!url) return
+  const blob = res?.data
+  if (!blob) return
+  const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.style.display = 'none'
   a.href = url
-  a.target = '_blank'
-  a.download = res?.data?.filename || `${props.bizName}成绩导入模板.xlsx`
-  a.dispatchEvent(new MouseEvent('click'))
+  a.download = `${props.bizName}成绩导入模板.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 const handleConfirm = async () => {

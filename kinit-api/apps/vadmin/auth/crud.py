@@ -272,16 +272,20 @@ class UserDal(DalBase):
         sys_vadmin_gender = gender_options.get("sys_vadmin_gender")
         gender_item["options"] = [{"label": item["label"], "value": item["value"]} for item in sys_vadmin_gender]
 
-    async def download_import_template(self) -> dict:
-        """
-        下载用户最新版导入模板
-        :return:
-        """
+    async def create_import_template_file(self) -> WriteXlsx:
         await self.get_import_headers_options()
         em = WriteXlsx()
         em.create_excel(sheet_name="用户导入模板", save_static=True)
         em.generate_template(copy.deepcopy(self.import_headers))
         em.close()
+        return em
+
+    async def download_import_template(self) -> dict:
+        """
+        下载用户最新版导入模板
+        :return:
+        """
+        em = await self.create_import_template_file()
         return {"url": em.get_file_url(), "filename": "用户导入模板.xlsx"}
 
     async def import_users(self, file: UploadFile) -> dict:

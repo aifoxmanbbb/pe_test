@@ -11,7 +11,7 @@ import {
   ElMessage,
   ElPopconfirm
 } from 'element-plus'
-import { getImportTemplateApi, postImportUserApi } from '@/api/vadmin/auth/user'
+import { downloadImportTemplateApi, postImportUserApi } from '@/api/vadmin/auth/user'
 import { ref } from 'vue'
 
 const emit = defineEmits(['getList'])
@@ -77,16 +77,18 @@ const handleImport = async () => {
 
 const downloadTemplate = async () => {
   ElMessage.info('正在下载请稍等！')
-  const res = await getImportTemplateApi()
-  if (res) {
-    const a = document.createElement('a')
-    a.style.display = 'none'
-    a.href = res.data.url
-    a.target = '_blank'
-    a.download = res.data.filename
-    const event = new MouseEvent('click')
-    a.dispatchEvent(event)
-  }
+  const res = await downloadImportTemplateApi()
+  const blob = res?.data
+  if (!blob) return
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.style.display = 'none'
+  a.href = url
+  a.download = '用户导入模板.xlsx'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 const downloadErrorFile = async (row: Recordable) => {

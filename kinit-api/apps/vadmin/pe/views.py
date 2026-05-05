@@ -6,6 +6,7 @@ import re
 import logging
 from typing import Any
 from fastapi import APIRouter, Depends, Body, Query, File, Form, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import select, false, true, func, or_
 from apps.vadmin.auth.utils.current import AllUserAuth, FullAdminAuth
 from apps.vadmin.auth.utils.validation.auth import Auth
@@ -1742,6 +1743,7 @@ async def export_report(
 @app.get('/score/template', summary='下载体考成绩导入模板')
 async def download_score_template(
         batch_id: int | None = Query(None),
+        direct: bool = Query(False),
         auth: Auth = Depends(FullAdminAuth(permissions=['pe.score.entry']))
 ):
     if not batch_id:
@@ -1754,7 +1756,13 @@ async def download_score_template(
     writer.generate_template(headers)
     BatchImportService.apply_score_template_validations(writer, options)
     writer.close()
-    return SuccessResponse({'url': writer.get_file_url()})
+    if direct:
+        return FileResponse(
+            writer.file_path,
+            filename=filename,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    return SuccessResponse({'url': writer.get_file_url(), 'filename': filename})
 
 
 @app.post('/standard/import', summary='体考标准 Excel 导入解析')

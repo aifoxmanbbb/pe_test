@@ -3,6 +3,7 @@
 
 from datetime import datetime
 from fastapi import APIRouter, Body, Depends, File, Query, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import ValidationError
 from sqlalchemy import select, false, true, func, or_
 from apps.vadmin.auth import models as auth_models
@@ -1054,7 +1055,10 @@ async def get_student_list(
 
 
 @app.get("/student/import/template", summary="下载学生批量导入模板")
-async def download_student_import_template(auth: Auth = Depends(FullAdminAuth(permissions=[STUDENT_PERM]))):
+async def download_student_import_template(
+    direct: bool = Query(False),
+    auth: Auth = Depends(FullAdminAuth(permissions=[STUDENT_PERM]))
+):
     if not _can_manage_student(auth):
         return ErrorResponse("无权限操作")
     headers = await _build_student_import_headers(auth.db, auth)
@@ -1062,6 +1066,12 @@ async def download_student_import_template(auth: Auth = Depends(FullAdminAuth(pe
     writer.create_excel(sheet_name="学生导入模板", save_static=True)
     writer.generate_template(headers)
     writer.close()
+    if direct:
+        return FileResponse(
+            writer.file_path,
+            filename="学生导入模板.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
     return SuccessResponse({"url": writer.get_file_url(), "filename": "学生导入模板.xlsx"})
 
 

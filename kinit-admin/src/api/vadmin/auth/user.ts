@@ -40,6 +40,14 @@ export const getImportTemplateApi = (): Promise<IResponse> => {
   return request.get({ url: `/vadmin/auth/user/download/import/template` })
 }
 
+export const downloadImportTemplateApi = (): Promise<any> => {
+  return request.get({
+    url: `/vadmin/auth/user/download/import/template`,
+    params: { direct: true },
+    responseType: 'blob'
+  })
+}
+
 export const postImportUserApi = (data: any): Promise<IResponse> => {
   return request.post({
     url: `/vadmin/auth/import/users`,

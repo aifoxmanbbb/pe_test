@@ -7,7 +7,8 @@
 # @desc           : 简要说明
 
 from redis.asyncio import Redis
-from fastapi import APIRouter, Depends, Body, UploadFile, Request
+from fastapi import APIRouter, Depends, Body, UploadFile, Request, Query
+from fastapi.responses import FileResponse
 from sqlalchemy import select, false
 from sqlalchemy.orm import joinedload
 from core.database import redis_getter
@@ -135,8 +136,19 @@ async def post_user_export_query_list(
 
 
 @app.get("/user/download/import/template", summary="下载最新批量导入用户模板")
-async def get_user_download_new_import_template(auth: Auth = Depends(AllUserAuth())):
-    return SuccessResponse(await crud.UserDal(auth.db).download_import_template())
+async def get_user_download_new_import_template(
+        direct: bool = Query(False),
+        auth: Auth = Depends(AllUserAuth())
+):
+    dal = crud.UserDal(auth.db)
+    if direct:
+        writer = await dal.create_import_template_file()
+        return FileResponse(
+            writer.file_path,
+            filename="用户导入模板.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    return SuccessResponse(await dal.download_import_template())
 
 
 @app.post("/import/users", summary="批量导入用户")
