@@ -4,7 +4,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 from typing import Optional
-from core.data_types import Telephone
+from core.data_types import IdCard, Telephone
 
 class SchoolOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -57,6 +57,7 @@ class StudentOut(BaseModel):
     student_no: str
     name: str
     gender: str
+    id_card: Optional[str] = None
     phone: Optional[str] = None
     is_active: bool
     create_datetime: datetime
@@ -66,6 +67,7 @@ class StudentBase(BaseModel):
     student_no: str
     name: str
     gender: str
+    id_card: IdCard
     school_id: int
     grade_id: int
     class_id: int
@@ -87,6 +89,7 @@ class StudentRegisterIn(BaseModel):
     student_no: str
     name: str
     gender: str
+    id_card: IdCard
     school_id: int
     grade_id: int
     class_id: int

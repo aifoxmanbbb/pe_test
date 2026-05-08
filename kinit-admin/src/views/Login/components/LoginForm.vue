@@ -2,7 +2,7 @@
 import { nextTick, reactive, ref, watch } from 'vue'
 import { Form } from '@/components/Form'
 import { useI18n } from '@/hooks/web/useI18n'
-import { ElButton, ElCheckbox, ElDialog, ElMessage } from 'element-plus'
+import { ElButton, ElCheckbox, ElMessage } from 'element-plus'
 import { useForm } from '@/hooks/web/useForm'
 import { getRoleMenusApi } from '@/api/login'
 import {
@@ -20,7 +20,7 @@ import { useValidator } from '@/hooks/web/useValidator'
 import { FormSchema } from '@/components/Form'
 import { BaseButton } from '@/components/Button'
 
-const { required, isTelephone } = useValidator()
+const { required, isTelephone, isIdCard } = useValidator()
 
 const permissionStore = usePermissionStore()
 
@@ -31,7 +31,7 @@ const { currentRoute, addRoute, push } = useRouter()
 const { t } = useI18n()
 
 const remember = ref(false)
-const registerVisible = ref(false)
+const activeMode = ref<'login' | 'register'>('login')
 const registering = ref(false)
 const publicSchoolOptions = ref<any[]>([])
 const publicGradeOptions = ref<any[]>([])
@@ -107,7 +107,7 @@ const schema = reactive<FormSchema[]>([
             <>
               <div class="flex justify-between items-center w-[100%]">
                 <ElCheckbox v-model={remember.value} label={t('login.remember')} size="small" />
-                <ElButton link type="primary" onClick={openRegisterDialog}>
+                <ElButton link type="primary" class="login-switch-link" onClick={openRegisterPanel}>
                   学生自主注册
                 </ElButton>
               </div>
@@ -154,6 +154,12 @@ const redirect = ref<string>('')
 const registerSchema = reactive<FormSchema[]>([
   { field: 'student_no', label: '学号', component: 'Input', componentProps: { placeholder: '请输入学号' } },
   { field: 'name', label: '姓名', component: 'Input', componentProps: { placeholder: '请输入姓名' } },
+  {
+    field: 'id_card',
+    label: '身份证',
+    component: 'Input',
+    componentProps: { maxlength: 18, placeholder: '请输入学生身份证号' }
+  },
   {
     field: 'gender',
     label: '性别',
@@ -218,6 +224,7 @@ const registerSchema = reactive<FormSchema[]>([
 const registerRules = reactive({
   student_no: [required()],
   name: [required()],
+  id_card: [required(), { validator: isIdCard, trigger: 'blur' }],
   gender: [required()],
   phone: [required(), { validator: isTelephone, trigger: 'blur' }],
   school_id: [required()],
@@ -236,8 +243,8 @@ watch(
 )
 
 // 登录
-const openRegisterDialog = async () => {
-  registerVisible.value = true
+const openRegisterPanel = async () => {
+  activeMode.value = 'register'
   publicSchoolOptions.value = []
   publicGradeOptions.value = []
   publicClassOptions.value = []
@@ -247,12 +254,17 @@ const openRegisterDialog = async () => {
   registerFormMethods.setValues({
     student_no: '',
     name: '',
+    id_card: '',
     gender: 'male',
     phone: '',
     school_id: null,
     grade_id: null,
     class_id: null
   })
+}
+
+const backToLogin = () => {
+  activeMode.value = 'login'
 }
 
 const submitRegister = async () => {
@@ -265,7 +277,8 @@ const submitRegister = async () => {
   registering.value = false
   if (res) {
     ElMessage.success(res.message || '注册成功，默认密码为手机号后8位')
-    registerVisible.value = false
+    formMethods.setValues({ telephone: data.phone, password: '' })
+    activeMode.value = 'login'
   }
 }
 
@@ -311,33 +324,162 @@ const getMenu = async () => {
 </script>
 
 <template>
-  <Form
-    :schema="schema"
-    :rules="rules"
-    label-position="top"
-    hide-required-asterisk
-    size="large"
-    class="dark:(border-1 border-[var(--el-border-color)] border-solid)"
-    @register="formRegister"
-  />
+  <div class="auth-switch-card" :class="{ 'is-register': activeMode === 'register' }">
+    <Transition name="auth-slide" mode="out-in">
+      <div v-if="activeMode === 'login'" key="login" class="auth-pane">
+        <Form
+          :schema="schema"
+          :rules="rules"
+          label-position="top"
+          hide-required-asterisk
+          size="large"
+          class="dark:(border-1 border-[var(--el-border-color)] border-solid)"
+          @register="formRegister"
+        />
+      </div>
 
-  <ElDialog
-    v-model="registerVisible"
-    title="学生自主注册"
-    width="min(620px, calc(100vw - 32px))"
-    destroy-on-close
-  >
-    <Form
-      :schema="registerSchema"
-      :rules="registerRules"
-      label-position="top"
-      hide-required-asterisk
-      size="large"
-      @register="registerFormRegister"
-    />
-    <template #footer>
-      <ElButton @click="registerVisible = false">取消</ElButton>
-      <ElButton type="primary" :loading="registering" @click="submitRegister">提交注册</ElButton>
-    </template>
-  </ElDialog>
+      <div v-else key="register" class="auth-pane auth-register">
+        <div class="auth-register__head">
+          <div>
+            <div class="auth-register__eyebrow">STUDENT ACCESS</div>
+            <h3>学生自主注册</h3>
+            <p>完成身份与班级信息登记后，使用手机号和默认密码登录录入成绩。</p>
+          </div>
+          <ElButton link class="auth-register__back" @click="backToLogin">返回登录</ElButton>
+        </div>
+
+        <Form
+          :schema="registerSchema"
+          :rules="registerRules"
+          label-position="top"
+          hide-required-asterisk
+          size="large"
+          class="auth-register__form"
+          @register="registerFormRegister"
+        />
+
+        <div class="auth-register__actions">
+          <ElButton class="auth-register__ghost" @click="backToLogin">已有账号，去登录</ElButton>
+          <ElButton type="primary" class="auth-register__submit" :loading="registering" @click="submitRegister">
+            提交注册
+          </ElButton>
+        </div>
+      </div>
+    </Transition>
+  </div>
 </template>
+
+<style scoped>
+.auth-switch-card {
+  position: relative;
+}
+
+.auth-pane {
+  width: 100%;
+}
+
+.auth-slide-enter-active,
+.auth-slide-leave-active {
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
+}
+
+.auth-slide-enter-from {
+  opacity: 0;
+  transform: translateX(18px);
+}
+
+.auth-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-18px);
+}
+
+.auth-register {
+  padding-top: 2px;
+}
+
+.auth-register__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 16px 16px 14px;
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 12% 12%, rgba(56, 189, 248, 0.2), transparent 38%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(8, 47, 73, 0.52));
+}
+
+.auth-register__eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: rgba(125, 211, 252, 0.78);
+}
+
+.auth-register__head h3 {
+  margin: 7px 0 6px;
+  font-size: 24px;
+  line-height: 1.15;
+  font-weight: 900;
+  color: #f8fbff;
+}
+
+.auth-register__head p {
+  margin: 0;
+  max-width: 310px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.auth-register__back {
+  flex: 0 0 auto;
+  margin-top: -2px;
+  color: #7dd3fc;
+}
+
+.auth-register__form :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+
+.auth-register__actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.auth-register__actions .el-button {
+  width: 100%;
+  height: 48px;
+  margin-left: 0;
+  border-radius: 999px;
+}
+
+.auth-register__submit {
+  border: 0;
+  background: linear-gradient(135deg, #38bdf8, #2563eb);
+  box-shadow: 0 16px 32px rgba(37, 99, 235, 0.34);
+}
+
+.auth-register__ghost {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.46);
+  color: #e2e8f0;
+}
+
+@media (max-width: 520px) {
+  .auth-register__head {
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px;
+  }
+
+  .auth-register__actions {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

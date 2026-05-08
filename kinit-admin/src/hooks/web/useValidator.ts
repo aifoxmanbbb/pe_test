@@ -54,7 +54,7 @@ export const useValidator = () => {
     }
   }
 
-  const isEmail = (rule: any, val: any, callback: Callback) => {
+  const isEmail = (_rule: any, val: any, callback: Callback) => {
     if (isEmpty(val) || isNullOrUnDef(val)) {
       callback()
     }
@@ -66,7 +66,7 @@ export const useValidator = () => {
     }
   }
 
-  const isTelephone = (rule: any, val: any, callback: Callback) => {
+  const isTelephone = (_rule: any, val: any, callback: Callback) => {
     if (isEmpty(val) || isNullOrUnDef(val)) {
       callback()
     }
@@ -78,7 +78,19 @@ export const useValidator = () => {
     }
   }
 
-  const isAmount = (rule: any, val: any, callback: Callback) => {
+  const isIdCard = (_rule: any, val: any, callback: Callback) => {
+    if (isEmpty(val) || isNullOrUnDef(val)) {
+      callback()
+      return
+    }
+    if (/^(\d{15}|\d{17}[\dXx])$/.test(String(val).trim())) {
+      callback()
+    } else {
+      callback(new Error('请填写正确的身份证号'))
+    }
+  }
+
+  const isAmount = (_rule: any, val: any, callback: Callback) => {
     if (isEmpty(val) || isNullOrUnDef(val)) {
       callback()
     }
@@ -97,6 +109,7 @@ export const useValidator = () => {
     notSpecialCharacters,
     isEmail,
     isTelephone,
+    isIdCard,
     isAmount
   }
 }

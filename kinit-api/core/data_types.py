@@ -62,6 +62,15 @@ Telephone = Annotated[
 ]
 
 
+# 实现自定义一个身份证号类型
+IdCard = Annotated[
+    str,
+    AfterValidator(lambda x: vali_id_card(x)),
+    PlainSerializer(lambda x: x, return_type=str),
+    WithJsonSchema({'type': 'string'}, mode='serialization')
+]
+
+
 # 实现自定义一个邮箱类型
 Email = Annotated[
     str,

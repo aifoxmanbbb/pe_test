@@ -1025,6 +1025,7 @@ async def get_student_analysis(
         item_map = {r.item_code: r for r in b_rows}
         comment = next((r.teacher_comment for r in b_rows if r.teacher_comment), '')
         detail_row = {
+            'batch_id': batch.id,
             'batch_name': batch.batch_name,
             'teacher_comment': comment,
             'composite_score': _student_composite_score(
@@ -1884,7 +1885,14 @@ async def export_report(
         school_name: str | None = Query(None),
         grade_name: str | None = Query(None),
         class_name: str | None = Query(None),
-        auth: Auth = Depends(FullAdminAuth(permissions=['fitness.report.export']))
+        student_no: str | None = Query(None),
+        auth: Auth = Depends(FullAdminAuth(permissions=[
+            'fitness.report.export',
+            'fitness.analysis.overview',
+            'fitness.analysis.student',
+            'fitness.analysis.class',
+            'fitness.analysis.grade'
+        ]))
 ):
     if not batch_id:
         return ErrorResponse('请选择批次')
@@ -1895,7 +1903,8 @@ async def export_report(
         batch_ids=[batch_id],
         school_name=school_name,
         grade_name=grade_name,
-        class_name=class_name
+        class_name=class_name,
+        student_no=student_no
     )
     rows = [r for r in rows if _in_scope(auth, r.school_name, r.class_name)]
     

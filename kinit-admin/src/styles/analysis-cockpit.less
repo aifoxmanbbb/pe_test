@@ -403,6 +403,34 @@
   margin-bottom: 16px;
 }
 
+.analysis-titlebar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  margin-bottom: 16px;
+}
+
+.analysis-titlebar .card-title {
+  margin-bottom: 0;
+  padding: 0 92px;
+}
+
+.analysis-export-button {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  border-radius: 999px;
+  padding: 10px 22px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, var(--analysis-accent-start), var(--analysis-accent-end));
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--analysis-accent-end) 22%, transparent);
+}
+
 .analysis-card :deep(.el-table) {
   --el-table-bg-color: rgba(255, 255, 255, 0.62);
   --el-table-tr-bg-color: rgba(255, 255, 255, 0.4);
@@ -486,5 +514,23 @@
   .analysis-card::before {
     left: 14px;
     right: 14px;
+  }
+
+  .analysis-titlebar {
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .analysis-titlebar .card-title {
+    flex: 1;
+    padding: 0;
+    text-align: left;
+    font-size: 18px;
+  }
+
+  .analysis-export-button {
+    position: static;
+    transform: none;
+    flex: none;
   }
 }

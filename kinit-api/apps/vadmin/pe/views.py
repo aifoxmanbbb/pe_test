@@ -816,6 +816,7 @@ async def get_student_analysis(
         state = classify_total(total_score, PE_PASS_LINE, PE_EXCELLENT_LINE, PE_FULL_LINE)
         comment = next((r.teacher_comment for r in b_rows if r.teacher_comment), '')
         detail_list.append({
+            'batch_id': batch.id,
             'batch_name': batch.batch_name,
             'gate_score': format_score(to_float(gate_row.raw_score) if gate_row else None),
             'gate_point': round2(to_float(gate_row.score_value)) if gate_row else 0.0,
@@ -1718,7 +1719,14 @@ async def export_report(
         school_name: str | None = Query(None),
         grade_name: str | None = Query(None),
         class_name: str | None = Query(None),
-        auth: Auth = Depends(FullAdminAuth(permissions=['pe.report']))
+        student_no: str | None = Query(None),
+        auth: Auth = Depends(FullAdminAuth(permissions=[
+            'pe.report',
+            'pe.analysis.overview',
+            'pe.analysis.student',
+            'pe.analysis.class',
+            'pe.analysis.grade'
+        ]))
 ):
     if not batch_id:
         return ErrorResponse('请选择批次')
@@ -1729,7 +1737,8 @@ async def export_report(
         batch_ids=[batch_id],
         school_name=school_name,
         grade_name=grade_name,
-        class_name=class_name
+        class_name=class_name,
+        student_no=student_no
     )
     rows = [r for r in rows if _in_scope(auth, r.school_name, r.class_name)]
     

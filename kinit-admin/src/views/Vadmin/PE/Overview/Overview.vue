@@ -5,11 +5,12 @@ import { ContentWrap } from '@/components/ContentWrap'
 import { Search } from '@/components/Search'
 import type { SearchExpose } from '@/components/Search'
 import { Echart } from '@/components/Echart'
-import { ElCard, ElCol, ElEmpty, ElRow, ElStatistic, ElTable, ElTableColumn, ElTabs, ElTabPane } from 'element-plus'
-import { getPeBatchOptionsApi, getPeOverviewApi } from '@/api/vadmin/pe'
+import { ElButton, ElCard, ElCol, ElEmpty, ElRow, ElStatistic, ElTable, ElTableColumn, ElTabs, ElTabPane } from 'element-plus'
+import { exportPeReportApi, getPeBatchOptionsApi, getPeOverviewApi } from '@/api/vadmin/pe'
 import { getClassOptionsApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/api/vadmin/sport'
 import { setCssVar } from '@/utils'
 import { analysisHeroImages } from '@/constants/cockpit'
+import { openScoreReport } from '@/utils/scoreReportExport'
 
 defineOptions({ name: 'PEOverview' })
 
@@ -209,6 +210,10 @@ const loadData = async (params: Record<string, any> = lastParams.value) => {
   buildCharts(res.data)
 }
 
+const handleExport = () => {
+  openScoreReport(exportPeReportApi, lastParams.value, '体考')
+}
+
 const loadBatchOptions = async () => {
   const batchRes = await getPeBatchOptionsApi({ stage_type: stageType.value }).catch(() => null)
   batchOptions.value = batchRes?.data || []
@@ -362,7 +367,10 @@ onBeforeUnmount(() => {
       </section>
 
       <ElCard shadow="never" class="analysis-card">
-        <div class="card-title">{{ mainTitle }}</div>
+        <div class="analysis-titlebar">
+          <div class="card-title">{{ mainTitle }}</div>
+          <ElButton class="analysis-export-button" type="primary" @click="handleExport">导出</ElButton>
+        </div>
 
         <div v-if="!result || !kpi.totalStudents" class="py-30px">
           <ElEmpty description="暂无可展示数据" />
@@ -794,7 +802,28 @@ onBeforeUnmount(() => {
 .analysis-card :deep(.el-card__body) {
   padding: 24px;
 }
-.card-title { text-align: center; font-size: 22px; font-weight: 700; margin-bottom: 16px; }
+.analysis-titlebar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  margin-bottom: 16px;
+}
+.card-title { text-align: center; font-size: 22px; font-weight: 700; margin-bottom: 0; padding: 0 92px; }
+.analysis-export-button {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  border-radius: 999px;
+  padding: 10px 22px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #f59e0b, #38bdf8);
+  box-shadow: 0 12px 24px rgba(245, 158, 11, 0.2);
+}
 .sub-cell { color: #909399; font-size: 12px; }
 .analysis-card :deep(.el-statistic__head) { font-size: 14px; color: #606266; font-weight: 500; }
 .analysis-card :deep(.el-card) {
@@ -837,6 +866,24 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 768px) {
+  .analysis-titlebar {
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .card-title {
+    flex: 1;
+    padding: 0;
+    text-align: left;
+    font-size: 18px;
+  }
+
+  .analysis-export-button {
+    position: static;
+    transform: none;
+    flex: none;
+  }
+
   .overview-stage {
     margin: -14px;
     padding: 14px;

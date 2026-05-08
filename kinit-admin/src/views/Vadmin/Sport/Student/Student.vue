@@ -29,13 +29,14 @@ const limit = ref(10)
 const schoolOptions = ref([])
 const gradeOptions = ref([])
 const classOptions = ref([])
-const { required, isTelephone } = useValidator()
+const { required, isTelephone, isIdCard } = useValidator()
 
 const searchSchema = reactive<FormSchema[]>([{ field: 'name', label: '学生姓名', component: 'Input' }])
 
 const tableColumns = reactive<TableColumn[]>([
   { field: 'student_no', label: '学号', width: '120px', show: true },
   { field: 'name', label: '姓名', width: '100px', show: true },
+  { field: 'id_card', label: '身份证', width: '180px', show: true },
   { field: 'phone', label: '手机号', width: '130px', show: true },
   { field: 'school_name', label: '所属学校', minWidth: '150px', show: true },
   { field: 'grade_name', label: '年级', width: '100px', show: true },
@@ -88,6 +89,15 @@ const currentId = ref<number | null>(null)
 const formSchema = reactive<FormSchema[]>([
   { field: 'student_no', label: '学号', component: 'Input' },
   { field: 'name', label: '姓名', component: 'Input' },
+  {
+    field: 'id_card',
+    label: '身份证',
+    component: 'Input',
+    componentProps: {
+      maxlength: 18,
+      placeholder: '请输入学生身份证号'
+    }
+  },
   {
     field: 'phone',
     label: '手机号',
@@ -145,6 +155,7 @@ const formSchema = reactive<FormSchema[]>([
 const rules = reactive({
   student_no: [required()],
   name: [required()],
+  id_card: [required(), { validator: isIdCard, trigger: 'blur' }],
   phone: [required(), { validator: isTelephone, trigger: 'blur' }],
   gender: [required()],
   school_id: [required()],
@@ -159,6 +170,7 @@ const handleAdd = () => {
     formMethods.setValues({
       student_no: '',
       name: '',
+      id_card: '',
       phone: '',
       gender: 'male',
       school_id: null,
@@ -185,6 +197,9 @@ const handleEdit = async (row: any) => {
 }
 
 const submit = async () => {
+  const elForm = await formMethods.getElFormExpose()
+  const valid = await elForm?.validate()
+  if (!valid) return
   const data = await formMethods.getFormData()
   if (!data) return
   const res = currentId.value

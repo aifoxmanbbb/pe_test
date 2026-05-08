@@ -30,6 +30,23 @@ def vali_telephone(value: str) -> str:
     return value
 
 
+def vali_id_card(value: str) -> str:
+    """
+    身份证号验证器，支持 15 位或 18 位居民身份证号。
+    :param value: 身份证号
+    :return: 规范化后的身份证号
+    """
+    text = str(value or "").strip().upper()
+    if not text:
+        raise ValueError("请输入身份证号")
+
+    regex = r"^(\d{15}|\d{17}[\dX])$"
+    if not re.match(regex, text):
+        raise ValueError("请输入正确身份证号")
+
+    return text
+
+
 def vali_email(value: str) -> str:
     """
     邮箱地址验证器

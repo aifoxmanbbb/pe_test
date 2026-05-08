@@ -6,6 +6,7 @@ import { Search } from '@/components/Search'
 import type { SearchExpose } from '@/components/Search'
 import { Echart } from '@/components/Echart'
 import {
+  ElButton,
   ElCard,
   ElCol,
   ElDescriptions,
@@ -18,10 +19,11 @@ import {
   ElTabs,
   ElTabPane
 } from 'element-plus'
-import { getFitnessStudentAnalysisApi, getFitnessStudentOptionsApi } from '@/api/vadmin/fitness'
+import { exportFitnessReportApi, getFitnessStudentAnalysisApi, getFitnessStudentOptionsApi } from '@/api/vadmin/fitness'
 import { getClassOptionsApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/api/vadmin/sport'
 import { useHeaderTheme } from '@/hooks/web/useHeaderTheme'
 import { analysisHeroImages } from '@/constants/cockpit'
+import { openScoreReport } from '@/utils/scoreReportExport'
 
 defineOptions({ name: 'FitnessStudentAnalysis' })
 
@@ -256,6 +258,22 @@ const loadData = async (params: Record<string, any> = lastParams.value) => {
   applyCharts(res.data)
 }
 
+const handleExport = () => {
+  const latest = detailList.value[0] || {}
+  openScoreReport(
+    exportFitnessReportApi,
+    {
+      batch_id: latest.batch_id,
+      school_name: profile.value?.school || lastParams.value.school_name,
+      grade_name: profile.value?.grade || lastParams.value.grade_name,
+      class_name: profile.value?.class_name || lastParams.value.class_name,
+      student_no: profile.value?.student_no || lastParams.value.student_no
+    },
+    '体测',
+    '暂无可导出的体测成绩数据'
+  )
+}
+
 const onTabChange = async () => {
   lastParams.value = {}
   currentSchoolName.value = ''
@@ -347,7 +365,10 @@ useHeaderTheme(() => stageType.value, headerThemeMap, 'primary')
       </section>
 
       <ElCard shadow="never" class="analysis-card">
-        <div class="card-title">{{ titleText }}</div>
+        <div class="analysis-titlebar">
+          <div class="card-title">{{ titleText }}</div>
+          <ElButton class="analysis-export-button" type="primary" @click="handleExport">导出</ElButton>
+        </div>
 
         <div v-if="!profile" class="py-30px"><ElEmpty description="请选择学生后查看体测分析" /></div>
 

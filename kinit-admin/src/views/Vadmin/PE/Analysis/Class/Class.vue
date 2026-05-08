@@ -5,11 +5,12 @@ import { ContentWrap } from '@/components/ContentWrap'
 import { Search } from '@/components/Search'
 import type { SearchExpose } from '@/components/Search'
 import { Echart } from '@/components/Echart'
-import { ElCard, ElCol, ElEmpty, ElRow, ElStatistic, ElTable, ElTableColumn, ElTabs, ElTabPane } from 'element-plus'
-import { getPeBatchOptionsApi, getPeClassAnalysisApi } from '@/api/vadmin/pe'
+import { ElButton, ElCard, ElCol, ElEmpty, ElRow, ElStatistic, ElTable, ElTableColumn, ElTabs, ElTabPane } from 'element-plus'
+import { exportPeReportApi, getPeBatchOptionsApi, getPeClassAnalysisApi } from '@/api/vadmin/pe'
 import { getClassOptionsApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/api/vadmin/sport'
 import { useHeaderTheme } from '@/hooks/web/useHeaderTheme'
 import { analysisHeroImages } from '@/constants/cockpit'
+import { openScoreReport } from '@/utils/scoreReportExport'
 
 defineOptions({ name: 'PEClassAnalysis' })
 
@@ -154,6 +155,10 @@ const loadData = async (params: Record<string, any> = lastParams.value) => {
   applyCharts(res.data)
 }
 
+const handleExport = () => {
+  openScoreReport(exportPeReportApi, lastParams.value, '体考')
+}
+
 const loadBatchOptions = async () => {
   const batchRes = await getPeBatchOptionsApi({ stage_type: stageType.value }).catch(() => null)
   batchOptions.value = batchRes?.data || []
@@ -247,7 +252,10 @@ useHeaderTheme(() => stageType.value, headerThemeMap, 'mid')
       </section>
 
       <ElCard shadow="never" class="analysis-card">
-        <div class="card-title">{{ titleText }}</div>
+        <div class="analysis-titlebar">
+          <div class="card-title">{{ titleText }}</div>
+          <ElButton class="analysis-export-button" type="primary" @click="handleExport">导出</ElButton>
+        </div>
 
         <div v-if="!kpi" class="py-30px"><ElEmpty description="请选择班级并查询" /></div>
 

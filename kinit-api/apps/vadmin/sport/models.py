@@ -162,6 +162,7 @@ class VadminPefStudent(BaseModel):
     student_no: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, comment="学号")
     name: Mapped[str] = mapped_column(String(50), nullable=False, comment="姓名")
     gender: Mapped[str] = mapped_column(String(8), nullable=False, comment="性别")
+    id_card: Mapped[str] = mapped_column(String(32), nullable=False, default="", comment="身份证号")
     birthday: Mapped[str | None] = mapped_column(Date, comment="出生日期")
     school_id: Mapped[int] = mapped_column(Integer, ForeignKey("vadmin_pef_school.id"), nullable=False, comment="所属学校ID")
     grade_id: Mapped[int] = mapped_column(Integer, ForeignKey("vadmin_pef_grade.id"), nullable=False, comment="年级ID")

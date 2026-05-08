@@ -12,7 +12,7 @@ from apps.vadmin.auth.models import VadminMenu, VadminRole, VadminUser
 from apps.vadmin.auth.utils.current import FullAdminAuth, OpenAuth, AllUserAuth
 from apps.vadmin.auth.utils.validation.auth import Auth
 from application import settings
-from core.validator import vali_telephone
+from core.validator import vali_id_card, vali_telephone
 from utils.excel.import_manage import ImportManage
 from utils.excel.write_xlsx import WriteXlsx
 from utils.response import SuccessResponse, ErrorResponse
@@ -473,6 +473,14 @@ async def _sync_student_login_user(
     if duplicate_student:
         return None, '该手机号已绑定其他学生'
 
+    duplicate_id_card = await db.scalar(select(VadminPefStudent).where(
+        VadminPefStudent.id_card == data.id_card,
+        VadminPefStudent.is_delete == false(),
+        VadminPefStudent.id != (student.id if student else 0)
+    ))
+    if duplicate_id_card:
+        return None, '该身份证号已绑定其他学生'
+
     role = await _ensure_student_menu_role(db)
 
     current_user = None
@@ -714,6 +722,7 @@ def _normalize_student_import_active(value) -> bool:
 STUDENT_IMPORT_FIELD_LABELS = {
     "student_no": "学号",
     "name": "姓名",
+    "id_card": "身份证",
     "phone": "手机号",
     "gender": "性别",
     "school_id": "学校",
@@ -748,6 +757,7 @@ def _student_import_headers() -> list[dict]:
     return [
         {"label": "学号", "field": "student_no", "required": True},
         {"label": "姓名", "field": "name", "required": True},
+        {"label": "身份证", "field": "id_card", "required": True, "rules": [vali_id_card]},
         {"label": "手机号", "field": "phone", "required": True, "rules": [vali_telephone]},
         {
             "label": "性别",
@@ -803,9 +813,10 @@ async def _build_student_import_headers(db, auth: Auth) -> list[dict]:
     grades = (await db.scalars(grade_sql)).all()
     classes = (await db.scalars(class_sql)).all()
 
-    headers[4]["options"] = [{"label": item.school_name, "value": item.school_name} for item in schools]
-    headers[5]["options"] = [{"label": item.grade_name, "value": item.grade_name} for item in grades]
-    headers[6]["options"] = [{"label": item.class_name, "value": item.class_name} for item in classes]
+    header_map = {item["field"]: item for item in headers}
+    header_map["school_name"]["options"] = [{"label": item.school_name, "value": item.school_name} for item in schools]
+    header_map["grade_name"]["options"] = [{"label": item.grade_name, "value": item.grade_name} for item in grades]
+    header_map["class_name"]["options"] = [{"label": item.class_name, "value": item.class_name} for item in classes]
     return headers
 
 
@@ -898,7 +909,7 @@ def _apply_student_import_template_validations(writer: WriteXlsx, options: dict,
 
     school_name = define_column_name("student_school_list", 0, options.get("schools") or [])
     if school_name:
-        sheet.data_validation(1, 4, max_row, 4, {'validate': 'list', 'source': f"={school_name}"})
+        sheet.data_validation(1, 5, max_row, 5, {'validate': 'list', 'source': f"={school_name}"})
 
     grade_start_col = 10
     schools = options.get("schools") or []
@@ -917,12 +928,12 @@ def _apply_student_import_template_validations(writer: WriteXlsx, options: dict,
         wb.define_name("student_school_grade_map", f"='_student_options'!$B$1:$C${school_grade_map_rows}")
         sheet.data_validation(
             1,
-            5,
+            6,
             max_row,
-            5,
+            6,
             {
                 'validate': 'list',
-                'source': '=INDIRECT(VLOOKUP($E2,student_school_grade_map,2,FALSE))'
+                'source': '=INDIRECT(VLOOKUP($F2,student_school_grade_map,2,FALSE))'
             }
         )
 
@@ -943,12 +954,12 @@ def _apply_student_import_template_validations(writer: WriteXlsx, options: dict,
         wb.define_name("student_grade_class_map", f"='_student_options'!$D$1:$E${grade_class_map_rows}")
         sheet.data_validation(
             1,
-            6,
+            7,
             max_row,
-            6,
+            7,
             {
                 'validate': 'list',
-                'source': '=INDIRECT(VLOOKUP($E2&"|"&$F2,student_grade_class_map,2,FALSE))'
+                'source': '=INDIRECT(VLOOKUP($F2&"|"&$G2,student_grade_class_map,2,FALSE))'
             }
         )
 
@@ -957,8 +968,9 @@ async def _build_student_import_template_config(db, auth: Auth) -> tuple[list[di
     headers = await _build_student_import_headers(db, auth)
     scope_options = await _build_student_import_scope_options(db, auth)
     template_headers = [dict(item) for item in headers]
-    for index in (4, 5, 6):
-        template_headers[index].pop("options", None)
+    for item in template_headers:
+        if item.get("field") in {"school_name", "grade_name", "class_name"}:
+            item.pop("options", None)
     return template_headers, scope_options
 
 
@@ -1410,6 +1422,7 @@ async def register_student(data: schemas.StudentRegisterIn = Body(...), auth: Au
         if (
             student.name != data.name
             or _normalize_entry_gender(student.gender) != _normalize_entry_gender(data.gender)
+            or (student.id_card and student.id_card != data.id_card)
             or student.school_id != data.school_id
             or student.grade_id != data.grade_id
             or student.class_id != data.class_id
@@ -1420,6 +1433,7 @@ async def register_student(data: schemas.StudentRegisterIn = Body(...), auth: Au
         student_no=data.student_no,
         name=data.name,
         gender=data.gender,
+        id_card=data.id_card,
         school_id=data.school_id,
         grade_id=data.grade_id,
         class_id=data.class_id,
@@ -1682,6 +1696,7 @@ async def import_students(
     importer.check_table_data()
 
     seen_student_nos: set[str] = set()
+    seen_id_cards: set[str] = set()
     for item in list(importer.success):
         old_data_list = item.pop("old_data_list")
         try:
@@ -1689,6 +1704,10 @@ async def import_students(
             if student_no in seen_student_nos:
                 raise ValueError("同一导入文件中学号重复")
             seen_student_nos.add(student_no)
+            id_card = vali_id_card(_clean_import_text(item.get("id_card")))
+            if id_card in seen_id_cards:
+                raise ValueError("同一导入文件中身份证重复")
+            seen_id_cards.add(id_card)
 
             school_name = _clean_import_text(item.get("school_name"))
             grade_name = _clean_import_text(item.get("grade_name"))
@@ -1704,6 +1723,7 @@ async def import_students(
             data = schemas.StudentIn(
                 student_no=student_no,
                 name=_clean_import_text(item.get("name")),
+                id_card=id_card,
                 phone=_clean_import_text(item.get("phone")),
                 gender=_clean_import_text(item.get("gender")),
                 school_id=school.id,
