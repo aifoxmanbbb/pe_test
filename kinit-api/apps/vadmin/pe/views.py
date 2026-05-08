@@ -149,26 +149,31 @@ def _stage_text(stage_type: str | None) -> str:
 
 def _pe_slot_codes(rows: list[VadminSportScore]) -> tuple[dict[str, str], dict[str, str]]:
     slot_keywords = {
-        'gate': ['门槛', '1000', '800', '耐力', '长跑', '跑'],
+        'gate': ['门槛', '1000', '800', '耐力', '长跑'],
         'rope': ['跳绳'],
         'jump': ['跳远'],
         'ball': ['实心球']
     }
     mapped = pick_items_by_keywords(rows, slot_keywords, fallback_size=4)
-    ordered: list[str] = []
-    for key in ['gate', 'rope', 'jump', 'ball']:
-        code = mapped.get(key)
-        if code and code not in ordered:
-            ordered.append(code)
-    for code in mapped.values():
-        if code and code not in ordered:
-            ordered.append(code)
-    while len(ordered) < 4:
-        ordered.append('')
     item_name_map: dict[str, str] = {}
+    item_order: list[str] = []
     for row in rows:
+        if row.item_code not in item_name_map:
+            item_order.append(row.item_code)
         item_name_map.setdefault(row.item_code, row.item_name)
-    return {'gate': ordered[0], 'rope': ordered[1], 'jump': ordered[2], 'ball': ordered[3]}, item_name_map
+
+    slot_codes = {key: mapped.get(key, '') for key in ['gate', 'rope', 'jump', 'ball']}
+    used = {code for code in slot_codes.values() if code}
+    fallback_codes = [
+        code for key, code in mapped.items()
+        if key.startswith('item_') and code and code not in used
+    ]
+    fallback_codes.extend(code for code in item_order if code and code not in used and code not in fallback_codes)
+
+    for key in ['rope', 'jump', 'ball']:
+        if not slot_codes[key] and fallback_codes:
+            slot_codes[key] = fallback_codes.pop(0)
+    return slot_codes, item_name_map
 
 
 def _rows_item_avg_score(rows: list[VadminSportScore], item_code: str) -> float:
