@@ -853,6 +853,8 @@ async def get_student_analysis_self(
         getattr(auth.user, 'id', None), getattr(auth.user, 'telephone', None),
         getattr(auth.user, 'is_staff', None), student_no
     )
+    if not getattr(auth.user, 'is_staff', False):
+        return ErrorResponse('学生端不展示成绩与得分，请通过成绩录入入口提交成绩')
     if getattr(auth.user, 'is_staff', False):
         if not student_no:
             return SuccessResponse(_empty_student())

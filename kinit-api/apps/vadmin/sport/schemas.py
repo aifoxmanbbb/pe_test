@@ -83,6 +83,16 @@ class StudentUpdate(StudentBase):
     pass
 
 
+class StudentRegisterIn(BaseModel):
+    student_no: str
+    name: str
+    gender: str
+    school_id: int
+    grade_id: int
+    class_id: int
+    phone: Telephone
+
+
 class SchoolBase(BaseModel):
     school_name: str
     school_code: Optional[str] = None

@@ -3,7 +3,7 @@ import { onMounted, ref, computed } from 'vue'
 import { ContentWrap } from '@/components/ContentWrap'
 import { Search } from '@/components/Search'
 import { FormSchema } from '@/components/Form'
-import { ElMessage, ElCard, ElTable, ElTableColumn, ElInput, ElButton, ElTooltip, ElIcon, ElDialog } from 'element-plus'
+import { ElMessage, ElCard, ElTable, ElTableColumn, ElInput, ElButton, ElIcon, ElDialog, ElEmpty } from 'element-plus'
 import { QuestionFilled } from '@element-plus/icons-vue'
 import {
   confirmPeScoresApi,
@@ -30,6 +30,9 @@ const schoolOptions = ref<any[]>([])
 const itemOptions = ref<StandardItemOption[]>([])
 const studentList = ref<any[]>([])
 const importDialogVisible = ref(false)
+const ruleDialogVisible = ref(false)
+const ruleDialogTitle = ref('')
+const ruleDialogLines = ref<string[]>([])
 
 const currentItemOption = computed(() =>
   itemOptions.value.find((item) => item.value === searchParams.value?.item_code) || null
@@ -38,6 +41,20 @@ const currentItemOption = computed(() =>
 const currentBatchOption = computed(() =>
   batchOptions.value.find((item) => item.value === searchParams.value?.batch_id) || null
 )
+
+const itemOptionMap = computed<Record<string, StandardItemOption>>(() => {
+  return itemOptions.value.reduce((map, item) => {
+    map[item.value] = item
+    return map
+  }, {} as Record<string, StandardItemOption>)
+})
+
+const openRuleDialog = (label: string, helpLines?: string[], event?: Event) => {
+  event?.stopPropagation()
+  ruleDialogTitle.value = label
+  ruleDialogLines.value = (helpLines || []).filter(Boolean)
+  ruleDialogVisible.value = true
+}
 
 const openImportDialog = () => {
   if (!searchParams.value?.batch_id) {
@@ -67,22 +84,11 @@ const renderHeaderLabel = (label: string, helpLines?: string[]) => {
     <div class="entry-header">
       <span>{label}</span>
       {lines.length ? (
-        <ElTooltip placement="top" effect="dark">
-          {{
-            content: () => (
-              <div class="entry-header__tooltip">
-                {lines.map((line) => (
-                  <div>{line}</div>
-                ))}
-              </div>
-            ),
-            default: () => (
-              <ElIcon class="entry-header__icon">
-                <QuestionFilled />
-              </ElIcon>
-            )
-          }}
-        </ElTooltip>
+        <span class="entry-header__icon" onClick={(event: MouseEvent) => openRuleDialog(label, lines, event)}>
+          <ElIcon>
+            <QuestionFilled />
+          </ElIcon>
+        </span>
       ) : null}
     </div>
   )
@@ -185,6 +191,7 @@ const submit = async () => {
         scores.push({
           ...s,
           item_code: searchParams.value.item_code,
+          item_name: currentItemOption.value?.label,
           raw_score: s.raw_score
         })
       }
@@ -196,6 +203,7 @@ const submit = async () => {
           scores.push({
             ...s,
             item_code: code,
+            item_name: itemOptionMap.value[code]?.label,
             raw_score: s.raw_scores[code]
           })
         }
@@ -282,6 +290,13 @@ onMounted(async () => {
       </div>
     </ElCard>
 
+    <ElDialog v-model="ruleDialogVisible" :title="`${ruleDialogTitle}得分计算规则`" width="760px">
+      <div v-if="ruleDialogLines.length" class="entry-rule-list">
+        <div v-for="line in ruleDialogLines" :key="line" class="entry-rule-list__item">{{ line }}</div>
+      </div>
+      <ElEmpty v-else description="暂无规则说明" />
+    </ElDialog>
+
     <ElDialog v-model="importDialogVisible" title="批量导入体考成绩" width="920px">
       <ScoreImport
         biz-name="体考"
@@ -305,13 +320,22 @@ onMounted(async () => {
 
 .entry-header__icon {
   color: var(--el-color-primary);
-  cursor: help;
+  cursor: pointer;
   font-size: 14px;
 }
 
-.entry-header__tooltip {
-  max-width: 320px;
+.entry-rule-list {
+  display: grid;
+  gap: 8px;
+  max-height: 62vh;
+  overflow: auto;
+}
+
+.entry-rule-list__item {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #334155;
   line-height: 1.6;
-  white-space: normal;
 }
 </style>

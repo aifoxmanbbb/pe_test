@@ -1074,6 +1074,8 @@ async def get_student_analysis_self(
         getattr(auth.user, 'id', None), getattr(auth.user, 'telephone', None),
         getattr(auth.user, 'is_staff', None), student_no
     )
+    if not getattr(auth.user, 'is_staff', False):
+        return ErrorResponse('学生端不展示成绩与得分，请通过成绩录入入口提交成绩')
     if getattr(auth.user, 'is_staff', False):
         if not student_no:
             return SuccessResponse(_empty_student())
@@ -1621,6 +1623,7 @@ async def upsert_scores(
         VadminSportStandardItem.is_delete == false(),
         VadminSportStandardItem.standard_id == batch.standard_id
     ))).all()
+    standard_items = BatchImportService.normalize_standard_items('fitness', batch.standard_id, standard_items)
     item_rule_map: dict[str, list[VadminSportStandardItem]] = {}
     for rule in standard_items:
         item_rule_map.setdefault(rule.item_code, []).append(rule)

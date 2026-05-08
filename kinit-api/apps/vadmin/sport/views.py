@@ -9,7 +9,7 @@ from sqlalchemy import select, false, true, func, or_
 from xlsxwriter.utility import xl_col_to_name
 from apps.vadmin.auth import models as auth_models
 from apps.vadmin.auth.models import VadminMenu, VadminRole, VadminUser
-from apps.vadmin.auth.utils.current import FullAdminAuth
+from apps.vadmin.auth.utils.current import FullAdminAuth, OpenAuth, AllUserAuth
 from apps.vadmin.auth.utils.validation.auth import Auth
 from application import settings
 from core.validator import vali_telephone
@@ -21,10 +21,16 @@ from .models import (
     VadminPefGrade,
     VadminPefClass,
     VadminPefStudent,
+    VadminSportStandard,
     VadminSportStandardItem,
+    VadminSportBatch,
+    VadminSportScore,
     vadmin_pef_school_leaders,
     vadmin_pef_class_coaches
 )
+from .service.analytics_service import round2, to_float
+from .service.batch_import_service import BatchImportService
+from .service.rule_engine import RuleEngine
 from .service.scope_service import (
     ROLE_SCHOOL_LEADER,
     ROLE_TEACHER_COACH,
@@ -41,6 +47,7 @@ STUDENT_ROLE_KEY = 'student_parent'
 STUDENT_ROLE_NAME = '家长'
 STUDENT_ROOT_PERM = 'sport.student'
 STUDENT_SCORE_PERM = 'sport.student.scores'
+STUDENT_ENTRY_PERM = 'sport.student.entry'
 SCHOOL_PERM = 'sport.foundation.school'
 GRADE_PERM = 'sport.foundation.grade'
 CLASS_PERM = 'sport.foundation.class'
@@ -88,9 +95,9 @@ def _normalize_auth_gender(value: str | int | None) -> str:
 
 def _display_gender(value: str | None) -> str:
     text = str(value or '').strip().lower()
-    if text in {'male', 'm', '1', 'ç”·'}:
+    if text in {'male', 'm', '1', '男', 'ç”·'}:
         return '男'
-    if text in {'female', 'f', '0', '2', 'å¥³'}:
+    if text in {'female', 'f', '0', '2', '女', 'å¥³'}:
         return '女'
     return '通用'
 
@@ -337,7 +344,7 @@ async def _ensure_student_menu_role(db):
         root_menu = VadminMenu(
             title='我的体育',
             icon='ant-design:user-outlined',
-            redirect='/sport/my-scores',
+            redirect='/sport/self-entry',
             component='#',
             path='/sport',
             disabled=False,
@@ -357,7 +364,7 @@ async def _ensure_student_menu_role(db):
         await db.flush()
     root_menu.title = '我的体育'
     root_menu.icon = 'ant-design:user-outlined'
-    root_menu.redirect = '/sport/my-scores'
+    root_menu.redirect = '/sport/self-entry'
     root_menu.component = '#'
     root_menu.path = '/sport'
     root_menu.disabled = False
@@ -374,22 +381,22 @@ async def _ensure_student_menu_role(db):
     root_menu.alwaysShow = True
 
     score_menu = await db.scalar(select(VadminMenu).where(
-        VadminMenu.perms == STUDENT_SCORE_PERM,
+        VadminMenu.perms == STUDENT_ENTRY_PERM,
         VadminMenu.is_delete == false()
     ))
     if not score_menu:
         score_menu = VadminMenu(
-            title='我的成绩',
+            title='成绩录入',
             icon=None,
             redirect=None,
-            component='views/Vadmin/Sport/Student/MyScores',
-            path='my-scores',
+            component='views/Vadmin/Sport/Student/SelfEntry',
+            path='self-entry',
             disabled=False,
             hidden=False,
             order=1,
             menu_type='1',
             parent_id=root_menu.id,
-            perms=STUDENT_SCORE_PERM,
+            perms=STUDENT_ENTRY_PERM,
             noCache=False,
             breadcrumb=True,
             affix=False,
@@ -399,17 +406,17 @@ async def _ensure_student_menu_role(db):
         )
         db.add(score_menu)
         await db.flush()
-    score_menu.title = '我的成绩'
+    score_menu.title = '成绩录入'
     score_menu.icon = None
     score_menu.redirect = None
-    score_menu.component = 'views/Vadmin/Sport/Student/MyScores'
-    score_menu.path = 'my-scores'
+    score_menu.component = 'views/Vadmin/Sport/Student/SelfEntry'
+    score_menu.path = 'self-entry'
     score_menu.disabled = False
     score_menu.hidden = False
     score_menu.order = 1
     score_menu.menu_type = '1'
     score_menu.parent_id = root_menu.id
-    score_menu.perms = STUDENT_SCORE_PERM
+    score_menu.perms = STUDENT_ENTRY_PERM
     score_menu.noCache = False
     score_menu.breadcrumb = True
     score_menu.affix = False
@@ -428,13 +435,15 @@ async def _ensure_student_menu_role(db):
             data_range=0,
             disabled=False,
             order=999,
-            desc='学生/家长自助账号，仅可查看我的成绩',
+            desc='学生/家长自助账号，仅可录入本人体育成绩',
             is_admin=False
         )
         db.add(role)
         await db.flush()
     else:
         role.disabled = False
+    role.name = STUDENT_ROLE_NAME
+    role.desc = '学生/家长自助账号，仅可录入本人体育成绩'
 
     target_menu_ids = {root_menu.id, score_menu.id}
     current_menu_ids = set((await db.scalars(select(auth_models.vadmin_auth_role_menus.c.menu_id).where(
@@ -530,6 +539,149 @@ async def _sync_student_login_user(
         role_id=role.id
     ))
     return user, None
+
+
+def _normalize_entry_gender(value: str | None) -> str:
+    text = str(value or '').strip().lower()
+    if text in {'male', 'm', '1', '男'}:
+        return 'male'
+    if text in {'female', 'f', '0', '2', '女'}:
+        return 'female'
+    return 'all'
+
+
+def _scope_value_unlimited(value: str | None) -> bool:
+    return str(value or '').strip().lower() in {'', '*', 'all', '全部', '不限', '不区分', '全校', '全年级', '全部班级'}
+
+
+def _batch_matches_student(batch: VadminSportBatch, school_name: str, grade_name: str, class_name: str) -> bool:
+    return (
+        (_scope_value_unlimited(batch.school_name) or batch.school_name == school_name)
+        and (_scope_value_unlimited(batch.grade_name) or batch.grade_name == grade_name)
+        and (_scope_value_unlimited(batch.class_name) or batch.class_name == class_name)
+    )
+
+
+def _item_matches_student_gender(item, gender: str | None) -> bool:
+    item_gender = _normalize_entry_gender(getattr(item, 'gender', None))
+    student_gender = _normalize_entry_gender(gender)
+    return item_gender in {student_gender, 'all'}
+
+
+def _build_entry_item_options(items: list, gender: str | None) -> list[dict]:
+    grouped: dict[str, list] = {}
+    for item in items:
+        if not _item_matches_student_gender(item, gender):
+            continue
+        grouped.setdefault(item.item_code, []).append(item)
+
+    result: list[dict] = []
+    for item_code, code_items in grouped.items():
+        first = code_items[0]
+        help_lines = _build_standard_item_help_lines(code_items)
+        if not help_lines and item_code in {'height', 'weight'}:
+            help_lines = [f"{first.item_name}仅记录原始测量值，不向学生展示得分。"]
+        result.append({
+            "label": first.item_name,
+            "value": item_code,
+            "item_name": first.item_name,
+            "help_lines": help_lines,
+            "calc_mode": getattr(first, 'calc_mode', None)
+        })
+    return result
+
+
+async def _get_self_student_context(db, user: VadminUser | None) -> dict | None:
+    if not user:
+        return None
+    base_sql = (
+        select(VadminPefStudent, VadminPefSchool.school_name, VadminPefGrade.grade_name, VadminPefClass.class_name)
+        .select_from(VadminPefStudent)
+        .join(VadminPefSchool, VadminPefStudent.school_id == VadminPefSchool.id)
+        .join(VadminPefGrade, VadminPefStudent.grade_id == VadminPefGrade.id)
+        .join(VadminPefClass, VadminPefStudent.class_id == VadminPefClass.id)
+        .where(
+            VadminPefStudent.is_delete == false(),
+            VadminPefStudent.is_active == true(),
+            VadminPefSchool.is_delete == false(),
+            VadminPefGrade.is_delete == false(),
+            VadminPefClass.is_delete == false()
+        )
+        .order_by(VadminPefStudent.update_datetime.desc(), VadminPefStudent.id.desc())
+    )
+    row = None
+    if user.id:
+        row = (await db.execute(base_sql.where(VadminPefStudent.user_id == user.id))).first()
+    if not row and user.telephone:
+        row = (await db.execute(base_sql.where(VadminPefStudent.phone == user.telephone))).first()
+    if not row:
+        return None
+    student, school_name, grade_name, class_name = row
+    return {
+        "student": student,
+        "school_name": school_name,
+        "grade_name": grade_name,
+        "class_name": class_name
+    }
+
+
+def _parse_entry_raw_score(raw, item_code: str | None = None) -> float | None:
+    parsed = RuleEngine.parse_time_to_seconds(raw)
+    if parsed is None:
+        return None
+    code = str(item_code or '').lower()
+    if code in {'jump', 'ball'} and parsed > 30:
+        return round2(parsed / 100.0)
+    return parsed
+
+
+def _select_entry_rule(item_rules: list, gender: str | None):
+    if not item_rules:
+        return None
+    target = _normalize_entry_gender(gender)
+    for rule in item_rules:
+        if _normalize_entry_gender(getattr(rule, 'gender', None)) == target:
+            return rule
+    for rule in item_rules:
+        if _normalize_entry_gender(getattr(rule, 'gender', None)) == 'all':
+            return rule
+    return None
+
+
+def _calc_entry_score(raw_score: float | None, rule, conflict_policy: str, grade_name: str) -> dict:
+    if raw_score is None or not rule:
+        return {}
+    mode = str(getattr(rule, 'calc_mode', None) or 'segment').strip().lower()
+    if mode == 'segment':
+        segments = getattr(rule, 'segment_json', None)
+        if isinstance(segments, str):
+            try:
+                segments = json.loads(segments)
+            except Exception:
+                segments = None
+        if not isinstance(segments, list) or not segments:
+            return {}
+        result = RuleEngine.eval_by_segment(raw_score, segments, grade_name=grade_name, conflict_policy=conflict_policy)
+        max_score = to_float(getattr(rule, 'max_score', 0), default=0.0)
+        score_value = to_float(result.get('score_value'), default=0.0)
+        if max_score > 0 and max_score < score_value <= 100:
+            result['score_value'] = round2((score_value / 100.0) * max_score)
+        return result
+    if mode == 'threshold':
+        pass_v = to_float(getattr(rule, 'pass_threshold', 0), default=0.0)
+        excellent_v = to_float(getattr(rule, 'excellent_threshold', 0), default=0.0)
+        full_v = to_float(getattr(rule, 'full_threshold', 0), default=0.0)
+        if pass_v == 0 and excellent_v == 0 and full_v == 0:
+            return {}
+        result = RuleEngine.eval_by_threshold(raw_score, {
+            'pass': pass_v,
+            'excellent': excellent_v,
+            'full': full_v
+        })
+        if to_float(getattr(rule, 'max_score', 0), default=0.0) <= 0:
+            result['score_value'] = 0.0
+        return result
+    return {}
 
 
 def _clean_import_text(value) -> str:
@@ -843,6 +995,80 @@ async def _resolve_student_import_scope(db, auth: Auth, school_name: str, grade_
 
 # ─── 基础选项接口 ──────────────────────────────────────────
 
+@app.get("/public/options/schools", summary="公开学校选项")
+async def get_public_school_options(stage_type: str = Query(None), auth: Auth = Depends(OpenAuth())):
+    sql = select(VadminPefSchool).where(
+        VadminPefSchool.is_delete == false(),
+        VadminPefSchool.is_active == true()
+    ).order_by(VadminPefSchool.sort.asc(), VadminPefSchool.id.asc())
+    if stage_type:
+        sql = sql.where(
+            or_(
+                func.find_in_set(stage_type, VadminPefSchool.stage_types) > 0,
+                VadminPefSchool.stage_types.is_(None),
+                VadminPefSchool.stage_types == ''
+            )
+        )
+    items = (await auth.db.scalars(sql)).all()
+    return SuccessResponse([
+        {
+            "label": i.school_name,
+            "value": i.id,
+            "school_name": i.school_name,
+            "stage_types": _normalize_stage_types(i.stage_types)
+        } for i in items
+    ])
+
+
+@app.get("/public/options/grades", summary="公开年级选项")
+async def get_public_grade_options(
+    school_id: int = Query(None),
+    school_name: str = Query(None),
+    auth: Auth = Depends(OpenAuth())
+):
+    sql = select(VadminPefGrade).where(
+        VadminPefGrade.is_delete == false(),
+        VadminPefGrade.is_active == true()
+    ).order_by(VadminPefGrade.sort.asc(), VadminPefGrade.id.asc())
+    if school_id:
+        sql = sql.where(VadminPefGrade.school_id == school_id)
+    if school_name:
+        sql = sql.join(VadminPefSchool, VadminPefGrade.school_id == VadminPefSchool.id).where(
+            VadminPefSchool.school_name == school_name
+        )
+    items = (await auth.db.scalars(sql)).all()
+    return SuccessResponse([{"label": i.grade_name, "value": i.id, "grade_name": i.grade_name} for i in items])
+
+
+@app.get("/public/options/classes", summary="公开班级选项")
+async def get_public_class_options(
+    grade_id: int = Query(None),
+    grade_name: str = Query(None),
+    school_id: int = Query(None),
+    school_name: str = Query(None),
+    auth: Auth = Depends(OpenAuth())
+):
+    sql = select(VadminPefClass).where(
+        VadminPefClass.is_delete == false(),
+        VadminPefClass.is_active == true()
+    ).order_by(VadminPefClass.sort.asc(), VadminPefClass.id.asc())
+    joined_school = False
+    if grade_id:
+        sql = sql.where(VadminPefClass.grade_id == grade_id)
+    if school_id:
+        sql = sql.where(VadminPefClass.school_id == school_id)
+    if grade_name:
+        sql = sql.join(VadminPefGrade, VadminPefClass.grade_id == VadminPefGrade.id)
+        sql = sql.where(VadminPefGrade.grade_name == grade_name)
+    if school_name:
+        if not joined_school:
+            sql = sql.join(VadminPefSchool, VadminPefClass.school_id == VadminPefSchool.id)
+            joined_school = True
+        sql = sql.where(VadminPefSchool.school_name == school_name)
+    items = (await auth.db.scalars(sql)).all()
+    return SuccessResponse([{"label": i.class_name, "value": i.id, "class_name": i.class_name} for i in items])
+
+
 @app.get("/options/schools", summary="学校选项")
 async def get_school_options(stage_type: str = Query(None), auth: Auth = Depends(FullAdminAuth())):
     sql = select(VadminPefSchool).where(VadminPefSchool.is_delete == false(), VadminPefSchool.is_active == true())
@@ -874,7 +1100,9 @@ async def get_grade_options(school_id: int = Query(None), school_name: str = Que
     if school_id:
         sql = sql.where(VadminPefGrade.school_id == school_id)
     if school_name:
-        sql = sql.join(VadminPefSchool).where(VadminPefSchool.school_name == school_name)
+        sql = sql.join(VadminPefSchool, VadminPefGrade.school_id == VadminPefSchool.id).where(
+            VadminPefSchool.school_name == school_name
+        )
     items = (await auth.db.scalars(sql)).all()
     return SuccessResponse([{"label": i.grade_name, "value": i.id, "grade_name": i.grade_name} for i in items])
 
@@ -898,11 +1126,11 @@ async def get_class_options(
     if school_id:
         sql = sql.where(VadminPefClass.school_id == school_id)
     if grade_name:
-        sql = sql.join(VadminPefGrade)
+        sql = sql.join(VadminPefGrade, VadminPefClass.grade_id == VadminPefGrade.id)
         sql = sql.where(VadminPefGrade.grade_name == grade_name)
     if school_name:
         if not joined_school:
-            sql = sql.join(VadminPefSchool)
+            sql = sql.join(VadminPefSchool, VadminPefClass.school_id == VadminPefSchool.id)
             joined_school = True
         sql = sql.where(VadminPefSchool.school_name == school_name)
     items = (await auth.db.scalars(sql)).all()
@@ -959,11 +1187,17 @@ async def get_teacher_coach_options(auth: Auth = Depends(FullAdminAuth(permissio
 
 @app.get("/options/standard/items", summary="标准项目选项")
 async def get_standard_item_options(standard_id: int = Query(...), auth: Auth = Depends(FullAdminAuth())):
+    standard = await auth.db.get(VadminSportStandard, standard_id)
     sql = select(VadminSportStandardItem).where(
         VadminSportStandardItem.standard_id == standard_id,
         VadminSportStandardItem.is_delete == false()
     ).order_by(VadminSportStandardItem.sort.asc())
     items = (await auth.db.scalars(sql)).all()
+    items = BatchImportService.normalize_standard_items(
+        getattr(standard, 'biz_type', ''),
+        standard_id,
+        items
+    )
     
     grouped: dict[str, list[VadminSportStandardItem]] = {}
     for item in items:
@@ -1155,6 +1389,209 @@ async def update_class(id: int, data: schemas.ClassUpdate = Body(...), auth: Aut
     return SuccessResponse("更新成功")
 
 # ─── 学生管理 ─────────────────────────────────────────────
+
+@app.post("/student/register", summary="学生自主注册")
+async def register_student(data: schemas.StudentRegisterIn = Body(...), auth: Auth = Depends(OpenAuth())):
+    school = await _load_school_or_none(auth.db, data.school_id)
+    grade = await _load_grade_or_none(auth.db, data.grade_id)
+    class_obj = await _load_class_or_none(auth.db, data.class_id)
+    if not school or not grade or not class_obj:
+        return ErrorResponse("学校/年级/班级不存在或已停用")
+    if not school.is_active or not grade.is_active or not class_obj.is_active:
+        return ErrorResponse("学校/年级/班级不存在或已停用")
+    if grade.school_id != school.id or class_obj.school_id != school.id or class_obj.grade_id != grade.id:
+        return ErrorResponse("学校、年级、班级不匹配")
+
+    student = await auth.db.scalar(select(VadminPefStudent).where(
+        VadminPefStudent.student_no == data.student_no,
+        VadminPefStudent.is_delete == false()
+    ))
+    if student:
+        if (
+            student.name != data.name
+            or _normalize_entry_gender(student.gender) != _normalize_entry_gender(data.gender)
+            or student.school_id != data.school_id
+            or student.grade_id != data.grade_id
+            or student.class_id != data.class_id
+        ):
+            return ErrorResponse("学号对应的学生档案信息不一致，请核对后再注册")
+
+    student_data = schemas.StudentIn(
+        student_no=data.student_no,
+        name=data.name,
+        gender=data.gender,
+        school_id=data.school_id,
+        grade_id=data.grade_id,
+        class_id=data.class_id,
+        phone=data.phone,
+        is_active=True
+    )
+    user, error = await _sync_student_login_user(auth.db, student, student_data)
+    if error:
+        return ErrorResponse(error)
+
+    payload = student_data.model_dump()
+    payload["user_id"] = user.id
+    if student:
+        for key, value in payload.items():
+            setattr(student, key, value)
+    else:
+        auth.db.add(VadminPefStudent(**payload))
+    await auth.db.flush()
+    return SuccessResponse(
+        {"password_tip": "默认密码为手机号后8位"},
+        msg="注册成功，请使用手机号和默认密码登录"
+    )
+
+
+@app.get("/student/self-entry/options", summary="学生本人录入批次与项目")
+async def get_student_self_entry_options(auth: Auth = Depends(AllUserAuth())):
+    if getattr(auth.user, 'is_staff', False):
+        return ErrorResponse("当前入口仅支持学生/家长账号使用")
+    ctx = await _get_self_student_context(auth.db, auth.user)
+    if not ctx:
+        return ErrorResponse("未找到学生档案，请先完成学生注册")
+
+    student = ctx["student"]
+    batch_rows = (await auth.db.scalars(select(VadminSportBatch).where(
+        VadminSportBatch.is_delete == false(),
+        VadminSportBatch.biz_type.in_(['pe', 'fitness'])
+    ).order_by(VadminSportBatch.id.desc()))).all()
+    batches = [
+        batch for batch in batch_rows
+        if _batch_matches_student(batch, ctx["school_name"], ctx["grade_name"], ctx["class_name"])
+    ]
+    standard_ids = sorted({batch.standard_id for batch in batches if batch.standard_id})
+    item_map: dict[int, list] = {}
+    if standard_ids:
+        item_rows = (await auth.db.scalars(select(VadminSportStandardItem).where(
+            VadminSportStandardItem.is_delete == false(),
+            VadminSportStandardItem.standard_id.in_(standard_ids)
+        ).order_by(VadminSportStandardItem.sort.asc(), VadminSportStandardItem.id.asc()))).all()
+        for item in item_rows:
+            item_map.setdefault(item.standard_id, []).append(item)
+
+    data_batches = []
+    for batch in batches:
+        items = BatchImportService.normalize_standard_items(batch.biz_type, batch.standard_id, item_map.get(batch.standard_id, []))
+        data_batches.append({
+            "label": batch.batch_name,
+            "value": batch.id,
+            "batch_id": batch.id,
+            "biz_type": batch.biz_type,
+            "biz_name": "体考" if batch.biz_type == "pe" else "体测",
+            "standard_id": batch.standard_id,
+            "items": _build_entry_item_options(items, student.gender)
+        })
+
+    return SuccessResponse({
+        "profile": {
+            "student_no": student.student_no,
+            "student_name": student.name,
+            "gender": student.gender,
+            "school_name": ctx["school_name"],
+            "grade_name": ctx["grade_name"],
+            "class_name": ctx["class_name"]
+        },
+        "batches": data_batches
+    })
+
+
+@app.post("/student/self-entry/submit", summary="学生本人提交成绩")
+async def submit_student_self_entry(payload: dict = Body(...), auth: Auth = Depends(AllUserAuth())):
+    if getattr(auth.user, 'is_staff', False):
+        return ErrorResponse("当前入口仅支持学生/家长账号使用")
+    ctx = await _get_self_student_context(auth.db, auth.user)
+    if not ctx:
+        return ErrorResponse("未找到学生档案，请先完成学生注册")
+    if not payload.get("batch_id"):
+        return ErrorResponse("请选择批次")
+    batch = await auth.db.scalar(select(VadminSportBatch).where(
+        VadminSportBatch.id == int(payload.get("batch_id")),
+        VadminSportBatch.is_delete == false(),
+        VadminSportBatch.biz_type.in_(['pe', 'fitness'])
+    ))
+    if not batch:
+        return ErrorResponse("批次不存在")
+    if not _batch_matches_student(batch, ctx["school_name"], ctx["grade_name"], ctx["class_name"]):
+        return ErrorResponse("当前批次不适用于该学生")
+
+    standard = await auth.db.get(VadminSportStandard, batch.standard_id)
+    conflict_policy = (standard.conflict_policy if standard else None) or 'lower_priority'
+    standard_items = (await auth.db.scalars(select(VadminSportStandardItem).where(
+        VadminSportStandardItem.standard_id == batch.standard_id,
+        VadminSportStandardItem.is_delete == false()
+    ).order_by(VadminSportStandardItem.sort.asc(), VadminSportStandardItem.id.asc()))).all()
+    standard_items = BatchImportService.normalize_standard_items(batch.biz_type, batch.standard_id, standard_items)
+
+    item_rule_map: dict[str, list] = {}
+    for item in standard_items:
+        if _item_matches_student_gender(item, ctx["student"].gender):
+            item_rule_map.setdefault(item.item_code, []).append(item)
+
+    scores = payload.get("scores") or []
+    if not isinstance(scores, list) or not scores:
+        return ErrorResponse("请填写至少一项成绩")
+
+    student = ctx["student"]
+    count = 0
+    for item in scores:
+        item_code = str(item.get("item_code") or "").strip()
+        if not item_code or item_code not in item_rule_map:
+            return ErrorResponse("存在不适用于当前学生的项目")
+        raw_text = str(item.get("raw_score") or "").strip()
+        if not raw_text:
+            continue
+        raw_score = _parse_entry_raw_score(raw_text, item_code)
+        if raw_score is None:
+            return ErrorResponse(f"成绩格式不正确：{raw_text}")
+
+        item_rules = item_rule_map.get(item_code) or []
+        selected_rule = _select_entry_rule(item_rules, student.gender)
+        calc_result = _calc_entry_score(raw_score, selected_rule, conflict_policy, ctx["grade_name"])
+        item_name = getattr(selected_rule, 'item_name', None) or item.get("item_name") or item_code
+        score_value = calc_result.get('score_value') if 'score_value' in calc_result else None
+
+        row = await auth.db.scalar(select(VadminSportScore).where(
+            VadminSportScore.is_delete == false(),
+            VadminSportScore.biz_type == batch.biz_type,
+            VadminSportScore.batch_id == batch.id,
+            VadminSportScore.student_no == student.student_no,
+            VadminSportScore.item_code == item_code
+        ).limit(1))
+        if row:
+            row.raw_score = raw_score
+            row.score_value = score_value
+            row.is_pass = calc_result.get('is_pass')
+            row.is_excellent = calc_result.get('is_excellent')
+            row.is_full = calc_result.get('is_full')
+            row.mobile = student.phone
+            row.item_name = item_name
+        else:
+            auth.db.add(VadminSportScore(
+                biz_type=batch.biz_type,
+                batch_id=batch.id,
+                student_no=student.student_no,
+                student_name=student.name,
+                gender=student.gender,
+                mobile=student.phone,
+                school_name=ctx["school_name"],
+                grade_name=ctx["grade_name"],
+                class_name=ctx["class_name"],
+                item_code=item_code,
+                item_name=item_name,
+                raw_score=raw_score,
+                score_value=score_value,
+                is_pass=calc_result.get('is_pass'),
+                is_excellent=calc_result.get('is_excellent'),
+                is_full=calc_result.get('is_full')
+            ))
+        count += 1
+    if count == 0:
+        return ErrorResponse("请填写至少一项成绩")
+    await auth.db.flush()
+    return SuccessResponse({"upsert_count": count}, msg="成绩已提交，评分计算中")
+
 
 @app.get("/student/list", summary="学生列表")
 async def get_student_list(

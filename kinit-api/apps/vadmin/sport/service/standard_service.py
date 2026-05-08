@@ -4,6 +4,7 @@
 from sqlalchemy import select, false
 from sqlalchemy.ext.asyncio import AsyncSession
 from apps.vadmin.sport.models import VadminSportStandard, VadminSportStandardItem
+from apps.vadmin.sport.service.batch_import_service import BatchImportService
 
 
 async def list_standard_with_items(
@@ -36,17 +37,21 @@ async def list_standard_with_items(
     ).order_by(VadminSportStandardItem.sort.asc(), VadminSportStandardItem.id.asc())
     items = (await db.scalars(item_sql)).all()
 
-    item_map: dict[int, list[dict]] = {}
+    raw_item_map: dict[int, list[VadminSportStandardItem]] = {}
     for it in items:
-        item_map.setdefault(it.standard_id, []).append({
-            'item': it.item_name,
-            'gender': it.gender,
-            'full': str(it.full_threshold) if it.full_threshold is not None else '-',
-            'excellent': str(it.excellent_threshold) if it.excellent_threshold is not None else '-',
-            'pass': str(it.pass_threshold) if it.pass_threshold is not None else '-',
-            'mode': it.calc_mode
-        })
+        raw_item_map.setdefault(it.standard_id, []).append(it)
 
+    item_map: dict[int, list[dict]] = {}
+    for s in standards:
+        for it in BatchImportService.normalize_standard_items(biz_type, s.id, raw_item_map.get(s.id, [])):
+            item_map.setdefault(s.id, []).append({
+                'item': it.item_name,
+                'gender': it.gender,
+                'full': str(it.full_threshold) if it.full_threshold is not None else '-',
+                'excellent': str(it.excellent_threshold) if it.excellent_threshold is not None else '-',
+                'pass': str(it.pass_threshold) if it.pass_threshold is not None else '-',
+                'mode': it.calc_mode
+            })
     result = []
     for s in standards:
         stage_map = {

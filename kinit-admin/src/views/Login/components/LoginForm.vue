@@ -1,10 +1,16 @@
 <script setup lang="tsx">
-import { reactive, ref, watch } from 'vue'
+import { nextTick, reactive, ref, watch } from 'vue'
 import { Form } from '@/components/Form'
 import { useI18n } from '@/hooks/web/useI18n'
-import { ElCheckbox } from 'element-plus'
+import { ElButton, ElCheckbox, ElDialog, ElMessage } from 'element-plus'
 import { useForm } from '@/hooks/web/useForm'
 import { getRoleMenusApi } from '@/api/login'
+import {
+  getPublicClassOptionsApi,
+  getPublicGradeOptionsApi,
+  getPublicSchoolOptionsApi,
+  registerStudentApi
+} from '@/api/vadmin/sport'
 import { useAuthStore } from '@/store/modules/auth'
 import { usePermissionStore } from '@/store/modules/permission'
 import { useRouter } from 'vue-router'
@@ -12,12 +18,9 @@ import type { RouteLocationNormalizedLoaded, RouteRecordRaw } from 'vue-router'
 import { UserLoginType } from '@/api/login/types'
 import { useValidator } from '@/hooks/web/useValidator'
 import { FormSchema } from '@/components/Form'
-import { Icon } from '@/components/Icon'
 import { BaseButton } from '@/components/Button'
 
-const emit = defineEmits(['to-telephone'])
-
-const { required } = useValidator()
+const { required, isTelephone } = useValidator()
 
 const permissionStore = usePermissionStore()
 
@@ -28,7 +31,11 @@ const { currentRoute, addRoute, push } = useRouter()
 const { t } = useI18n()
 
 const remember = ref(false)
-const hoverColor = 'var(--el-color-primary)'
+const registerVisible = ref(false)
+const registering = ref(false)
+const publicSchoolOptions = ref<any[]>([])
+const publicGradeOptions = ref<any[]>([])
+const publicClassOptions = ref<any[]>([])
 
 const rules = {
   telephone: [required()],
@@ -100,6 +107,9 @@ const schema = reactive<FormSchema[]>([
             <>
               <div class="flex justify-between items-center w-[100%]">
                 <ElCheckbox v-model={remember.value} label={t('login.remember')} size="small" />
+                <ElButton link type="primary" onClick={openRegisterDialog}>
+                  学生自主注册
+                </ElButton>
               </div>
             </>
           )
@@ -132,69 +142,88 @@ const schema = reactive<FormSchema[]>([
         }
       }
     }
-  },
-  // {
-  //   field: 'other',
-  //   component: 'Divider',
-  //   label: t('login.otherLogin'),
-  //   componentProps: {
-  //     contentPosition: 'center'
-  //   }
-  // },
-  // {
-  //   field: 'otherIcon',
-  //   colProps: {
-  //     span: 24
-  //   },
-  //   formItemProps: {
-  //     slots: {
-  //       default: () => {
-  //         return (
-  //           <>
-  //             <div class="flex justify-between w-[100%]">
-  //               <Icon
-  //                 icon="ant-design:github-filled"
-  //                 size={iconSize}
-  //                 class="cursor-pointer ant-icon"
-  //                 color={iconColor}
-  //                 hoverColor={hoverColor}
-  //               />
-  //               <Icon
-  //                 icon="ant-design:wechat-filled"
-  //                 size={iconSize}
-  //                 class="cursor-pointer ant-icon"
-  //                 color={iconColor}
-  //                 hoverColor={hoverColor}
-  //               />
-  //               <Icon
-  //                 icon="ant-design:alipay-circle-filled"
-  //                 size={iconSize}
-  //                 color={iconColor}
-  //                 hoverColor={hoverColor}
-  //                 class="cursor-pointer ant-icon"
-  //               />
-  //               <Icon
-  //                 icon="ant-design:weibo-circle-filled"
-  //                 size={iconSize}
-  //                 color={iconColor}
-  //                 hoverColor={hoverColor}
-  //                 class="cursor-pointer ant-icon"
-  //               />
-  //             </div>
-  //           </>
-  //         )
-  //       }
-  //     }
-  //   }
-  // }
+  }
 ])
 
-const iconSize = 30
 const { formRegister, formMethods } = useForm()
+const { formRegister: registerFormRegister, formMethods: registerFormMethods } = useForm()
 const { getFormData, getElFormExpose } = formMethods
 const loading = ref(false)
-const iconColor = '#999'
 const redirect = ref<string>('')
+
+const registerSchema = reactive<FormSchema[]>([
+  { field: 'student_no', label: '学号', component: 'Input', componentProps: { placeholder: '请输入学号' } },
+  { field: 'name', label: '姓名', component: 'Input', componentProps: { placeholder: '请输入姓名' } },
+  {
+    field: 'gender',
+    label: '性别',
+    component: 'Select',
+    value: 'male',
+    componentProps: {
+      options: [
+        { label: '男', value: 'male' },
+        { label: '女', value: 'female' }
+      ]
+    }
+  },
+  {
+    field: 'phone',
+    label: '手机号',
+    component: 'Input',
+    componentProps: { maxlength: 11, placeholder: '请输入登录手机号' }
+  },
+  {
+    field: 'school_id',
+    label: '学校',
+    component: 'Select',
+    componentProps: {
+      options: publicSchoolOptions,
+      filterable: true,
+      onChange: async (val: number) => {
+        publicGradeOptions.value = []
+        publicClassOptions.value = []
+        registerFormMethods.setValues({ grade_id: null, class_id: null })
+        const res = await getPublicGradeOptionsApi({ school_id: val }).catch(() => null)
+        publicGradeOptions.value = res?.data || []
+      }
+    }
+  },
+  {
+    field: 'grade_id',
+    label: '年级',
+    component: 'Select',
+    componentProps: {
+      options: publicGradeOptions,
+      filterable: true,
+      onChange: async (val: number) => {
+        publicClassOptions.value = []
+        registerFormMethods.setValues({ class_id: null })
+        const data = await registerFormMethods.getFormData()
+        const res = await getPublicClassOptionsApi({
+          school_id: data.school_id,
+          grade_id: val
+        }).catch(() => null)
+        publicClassOptions.value = res?.data || []
+      }
+    }
+  },
+  {
+    field: 'class_id',
+    label: '班级',
+    component: 'Select',
+    componentProps: { options: publicClassOptions, filterable: true }
+  }
+])
+
+const registerRules = reactive({
+  student_no: [required()],
+  name: [required()],
+  gender: [required()],
+  phone: [required(), { validator: isTelephone, trigger: 'blur' }],
+  school_id: [required()],
+  grade_id: [required()],
+  class_id: [required()]
+})
 
 watch(
   () => currentRoute.value,
@@ -207,6 +236,39 @@ watch(
 )
 
 // 登录
+const openRegisterDialog = async () => {
+  registerVisible.value = true
+  publicSchoolOptions.value = []
+  publicGradeOptions.value = []
+  publicClassOptions.value = []
+  const res = await getPublicSchoolOptionsApi().catch(() => null)
+  publicSchoolOptions.value = res?.data || []
+  await nextTick()
+  registerFormMethods.setValues({
+    student_no: '',
+    name: '',
+    gender: 'male',
+    phone: '',
+    school_id: null,
+    grade_id: null,
+    class_id: null
+  })
+}
+
+const submitRegister = async () => {
+  const elForm = await registerFormMethods.getElFormExpose()
+  const valid = await elForm?.validate()
+  if (!valid) return
+  registering.value = true
+  const data = await registerFormMethods.getFormData()
+  const res = await registerStudentApi(data).catch(() => null)
+  registering.value = false
+  if (res) {
+    ElMessage.success(res.message || '注册成功，默认密码为手机号后8位')
+    registerVisible.value = false
+  }
+}
+
 const signIn = async () => {
   const elForm = await getElFormExpose()
   const valid = await elForm?.validate()
@@ -246,10 +308,6 @@ const getMenu = async () => {
   }
 }
 
-// 手机验证码登录
-const toTelephoneLogin = () => {
-  emit('to-telephone')
-}
 </script>
 
 <template>
@@ -262,4 +320,24 @@ const toTelephoneLogin = () => {
     class="dark:(border-1 border-[var(--el-border-color)] border-solid)"
     @register="formRegister"
   />
+
+  <ElDialog
+    v-model="registerVisible"
+    title="学生自主注册"
+    width="min(620px, calc(100vw - 32px))"
+    destroy-on-close
+  >
+    <Form
+      :schema="registerSchema"
+      :rules="registerRules"
+      label-position="top"
+      hide-required-asterisk
+      size="large"
+      @register="registerFormRegister"
+    />
+    <template #footer>
+      <ElButton @click="registerVisible = false">取消</ElButton>
+      <ElButton type="primary" :loading="registering" @click="submitRegister">提交注册</ElButton>
+    </template>
+  </ElDialog>
 </template>

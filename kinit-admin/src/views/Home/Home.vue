@@ -6,13 +6,9 @@ import { ContentWrap } from '@/components/ContentWrap'
 import { Echart } from '@/components/Echart'
 import { useAuthStore } from '@/store/modules/auth'
 import { useHeaderTheme } from '@/hooks/web/useHeaderTheme'
-import MyScores from '@/views/Vadmin/Sport/Student/MyScores.vue'
-import { getPeBatchOptionsApi, getPeOverviewApi, getPeStudentAnalysisSelfApi } from '@/api/vadmin/pe'
-import {
-  getFitnessBatchOptionsApi,
-  getFitnessOverviewApi,
-  getFitnessStudentAnalysisSelfApi
-} from '@/api/vadmin/fitness'
+import SelfEntry from '@/views/Vadmin/Sport/Student/SelfEntry.vue'
+import { getPeBatchOptionsApi, getPeOverviewApi } from '@/api/vadmin/pe'
+import { getFitnessBatchOptionsApi, getFitnessOverviewApi } from '@/api/vadmin/fitness'
 import { cockpitRoleMeta, resolveCockpitRole, type CockpitRole } from '@/constants/cockpit'
 
 defineOptions({ name: 'HomeCockpit' })
@@ -641,21 +637,11 @@ const loadStaffSnapshots = async () => {
   }
 }
 
-const loadStudentSnapshots = async () => {
-  const [peRes, fitnessRes] = await Promise.all([
-    getPeStudentAnalysisSelfApi().catch(() => null),
-    getFitnessStudentAnalysisSelfApi().catch(() => null)
-  ])
-  peSelfSnapshot.value = peRes?.data || null
-  fitnessSelfSnapshot.value = fitnessRes?.data || null
-}
-
 const loadCockpit = async () => {
   loading.value = true
   loadingProgress.value = 22
   if (roleType.value === 'student') {
-    loadingProgress.value = 48
-    await loadStudentSnapshots()
+    loadingProgress.value = 100
   } else {
     loadingProgress.value = 48
     await loadStaffSnapshots()
@@ -670,7 +656,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <MyScores v-if="roleType === 'student'" />
+  <SelfEntry v-if="roleType === 'student'" />
   <ContentWrap v-else class="command-center-wrap">
     <div
       class="command-center"

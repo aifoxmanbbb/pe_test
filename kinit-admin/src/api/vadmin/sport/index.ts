@@ -25,6 +25,30 @@ export const getStandardItemOptionsApi = (params: { standard_id: number }): Prom
   return request.get({ url: '/vadmin/sport/options/standard/items', params })
 }
 
+export const getPublicSchoolOptionsApi = (params?: any): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/sport/public/options/schools', params })
+}
+
+export const getPublicGradeOptionsApi = (params?: any): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/sport/public/options/grades', params })
+}
+
+export const getPublicClassOptionsApi = (params?: any): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/sport/public/options/classes', params })
+}
+
+export const registerStudentApi = (data: any): Promise<IResponse<any>> => {
+  return request.post({ url: '/vadmin/sport/student/register', data })
+}
+
+export const getStudentSelfEntryOptionsApi = (): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/sport/student/self-entry/options' })
+}
+
+export const submitStudentSelfEntryApi = (data: any): Promise<IResponse<any>> => {
+  return request.post({ url: '/vadmin/sport/student/self-entry/submit', data })
+}
+
 // ─── 学校管理 ─────────────────────────────────────────────
 export const getSchoolListApi = (params?: any): Promise<IResponse<any>> => {
   return request.get({ url: '/vadmin/sport/school/list', params })

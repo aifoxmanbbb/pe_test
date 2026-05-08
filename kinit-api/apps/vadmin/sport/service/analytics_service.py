@@ -120,6 +120,8 @@ async def list_scores(
         VadminSportScore.biz_type == biz_type,
         VadminSportScore.batch_id.in_(batch_ids)
     )
+    if biz_type == 'fitness':
+        sql = sql.where(VadminSportScore.item_code != 'run_50x8')
     if school_name:
         sql = sql.where(VadminSportScore.school_name == school_name)
     if grade_name:

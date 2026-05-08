@@ -9,12 +9,14 @@ import {
   ElCheckboxGroup,
   ElCheckbox,
   ElAlert,
+  ElMessage,
   ElTabs,
   ElTabPane
 } from 'element-plus'
 import { Table, TableColumn } from '@/components/Table'
 import { BaseButton } from '@/components/Button'
 import { getPeReportConfigApi, getPeBatchOptionsApi, exportPeReportApi } from '@/api/vadmin/pe'
+import { getClassOptionsApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/api/vadmin/sport'
 
 defineOptions({
   name: 'PEReport'
@@ -22,7 +24,11 @@ defineOptions({
 
 const examTypeTab = ref('mid')
 
-const batchOptions = ref([])
+const batchOptions = ref<any[]>([])
+const schoolOptions = ref<any[]>([])
+const gradeOptions = ref<any[]>([])
+const classOptions = ref<any[]>([])
+const exportSchoolName = ref('')
 
 const searchSchema = computed<FormSchema[]>(() => [
   {
@@ -51,25 +57,55 @@ const searchSchema = computed<FormSchema[]>(() => [
   {
     field: 'school_name',
     label: '学校',
-    component: 'Input',
+    component: 'Select',
     componentProps: {
-      placeholder: '请输入学校名称'
+      placeholder: '请选择学校',
+      options: schoolOptions.value,
+      filterable: true,
+      clearable: true,
+      onChange: async (val: string) => {
+        exportSchoolName.value = val || ''
+        gradeOptions.value = []
+        classOptions.value = []
+        const res = await getGradeOptionsApi({ school_name: val }).catch(() => null)
+        gradeOptions.value = (res?.data || []).map((item: any) => ({
+          label: item.label,
+          value: item.grade_name || item.label
+        }))
+      }
     }
   },
   {
     field: 'grade_name',
     label: '年级',
-    component: 'Input',
+    component: 'Select',
     componentProps: {
-      placeholder: '请输入年级'
+      placeholder: '请选择年级',
+      options: gradeOptions.value,
+      filterable: true,
+      clearable: true,
+      onChange: async (val: string) => {
+        classOptions.value = []
+        const res = await getClassOptionsApi({
+          school_name: exportSchoolName.value,
+          grade_name: val
+        }).catch(() => null)
+        classOptions.value = (res?.data || []).map((item: any) => ({
+          label: item.label,
+          value: item.class_name || item.label
+        }))
+      }
     }
   },
   {
     field: 'class_name',
     label: '班级',
-    component: 'Input',
+    component: 'Select',
     componentProps: {
-      placeholder: '请输入班级'
+      placeholder: '请选择班级',
+      options: classOptions.value,
+      filterable: true,
+      clearable: true
     }
   }
 ])
@@ -77,6 +113,7 @@ const searchSchema = computed<FormSchema[]>(() => [
 const searchParams = ref<Record<string, any>>({})
 const setSearchParams = (data: Record<string, any>) => {
   searchParams.value = data
+  exportSchoolName.value = data.school_name || exportSchoolName.value
 }
 
 const exportFields = ref([
@@ -147,13 +184,14 @@ const historyData = ref([
 ])
 
 const tableColumns = reactive<TableColumn[]>([
-  { field: 'id', label: '序号', width: '70px' },
-  { field: 'time', label: '导出时间', width: '180px' },
-  { field: 'type', label: '报表类型', width: '120px' },
+  { field: 'id', label: '序号', width: '70px', show: true },
+  { field: 'time', label: '导出时间', width: '180px', show: true },
+  { field: 'type', label: '报表类型', width: '120px', show: true },
   {
     field: 'status',
     label: '状态',
     width: '90px',
+    show: true,
     slots: {
       default: (data: any) => {
         const val = data.row.status
@@ -161,11 +199,12 @@ const tableColumns = reactive<TableColumn[]>([
       }
     }
   },
-  { field: 'version', label: '标准版本号', width: '120px' },
+  { field: 'version', label: '标准版本号', width: '120px', show: true },
   {
     field: 'action',
     label: '操作',
     minWidth: '140px',
+    show: true,
     slots: {
       default: (data: any) => {
         return (
@@ -212,9 +251,18 @@ const loadBatchOptions = async () => {
   }
 }
 
+const loadSchoolOptions = async () => {
+  const res = await getSchoolOptionsApi().catch(() => null)
+  schoolOptions.value = (res?.data || []).map((item: any) => ({
+    label: item.label,
+    value: item.school_name || item.label
+  }))
+}
+
 onMounted(() => {
   loadConfig()
   loadBatchOptions()
+  loadSchoolOptions()
 })
 </script>
 
@@ -260,7 +308,7 @@ onMounted(() => {
         :closable="false"
       >
         <p>文件名: {{ exportStatus.fileName }}</p>
-        <BaseButton type="primary" link>立即下载</BaseButton>
+        <BaseButton type="primary" link @click="handleDownload">立即下载</BaseButton>
       </ElAlert>
       <ElAlert v-else title="本次导出失败" type="error" show-icon :closable="false">
         <p>错误原因: {{ exportStatus.errorMsg }}</p>
@@ -269,7 +317,7 @@ onMounted(() => {
     </div>
 
     <ElCard shadow="never" title="最近导出记录">
-      <Table :columns="tableColumns" :data="historyData" :pagination="false" />
+      <Table :columns="tableColumns" :data="historyData" />
     </ElCard>
   </ContentWrap>
 </template>

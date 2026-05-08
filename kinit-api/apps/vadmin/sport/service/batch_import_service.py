@@ -4,6 +4,7 @@
 from openpyxl import load_workbook
 from typing import List, Dict, Any
 import io
+from types import SimpleNamespace
 from sqlalchemy import select, false
 from xlsxwriter.utility import xl_col_to_name
 from apps.vadmin.sport.models import (
@@ -30,6 +31,12 @@ class BatchImportService:
     ]
     SCORE_REQUIRED_LABELS = {label for label, _ in SCORE_HEADERS}
     UNLIMITED_VALUES = {'', '*', 'all', '全部', '不限', '不区分', '全校', '全部学校', '全年级', '全部年级', '全部班级'}
+    FITNESS_REMOVED_ITEM_CODES = {'run_50x8'}
+    FITNESS_REMOVED_ITEM_NAMES = {'50米×8往返跑', '50米x8往返跑', '50x8往返跑'}
+    FITNESS_VIRTUAL_ITEMS = [
+        {"item_code": "height", "item_name": "身高", "gender": "all", "calc_mode": "record", "sort": -2},
+        {"item_code": "weight", "item_name": "体重", "gender": "all", "calc_mode": "record", "sort": -1}
+    ]
 
     @staticmethod
     def _clean_cell(value) -> str:
@@ -68,6 +75,43 @@ class BatchImportService:
                 seen.add(text)
                 result.append({"label": text, "value": text})
         return result
+
+    @staticmethod
+    def is_removed_fitness_item(item) -> bool:
+        code = BatchImportService._clean_cell(getattr(item, "item_code", "")).lower()
+        name = BatchImportService._clean_cell(getattr(item, "item_name", ""))
+        return code in BatchImportService.FITNESS_REMOVED_ITEM_CODES or name in BatchImportService.FITNESS_REMOVED_ITEM_NAMES
+
+    @staticmethod
+    def normalize_standard_items(biz_type: str, standard_id: int | None, items: list) -> list:
+        normalized = list(items or [])
+        if biz_type != 'fitness':
+            return normalized
+
+        normalized = [item for item in normalized if not BatchImportService.is_removed_fitness_item(item)]
+        existing_codes = {
+            BatchImportService._clean_cell(getattr(item, "item_code", "")).lower()
+            for item in normalized
+        }
+        for virtual_item in BatchImportService.FITNESS_VIRTUAL_ITEMS:
+            if virtual_item["item_code"] in existing_codes:
+                continue
+            normalized.append(SimpleNamespace(
+                standard_id=standard_id,
+                item_code=virtual_item["item_code"],
+                item_name=virtual_item["item_name"],
+                gender=virtual_item["gender"],
+                calc_mode=virtual_item["calc_mode"],
+                pass_threshold=None,
+                excellent_threshold=None,
+                full_threshold=None,
+                segment_json=[],
+                is_required=True,
+                is_gate_item=False,
+                max_score=0,
+                sort=virtual_item["sort"]
+            ))
+        return sorted(normalized, key=lambda item: (getattr(item, "sort", 0) or 0, getattr(item, "id", 0) or 0))
 
     @staticmethod
     def _score_template_headers() -> list[dict]:
@@ -263,6 +307,7 @@ class BatchImportService:
             VadminSportStandardItem.standard_id == batch.standard_id,
             VadminSportStandardItem.is_delete == false()
         ).order_by(VadminSportStandardItem.sort.asc(), VadminSportStandardItem.id.asc()))).all()
+        standard_items = BatchImportService.normalize_standard_items(biz_type, batch.standard_id, standard_items)
 
         scoped_student_rows = [
             row for row in student_rows
@@ -304,6 +349,7 @@ class BatchImportService:
             VadminSportStandardItem.standard_id == batch.standard_id,
             VadminSportStandardItem.is_delete == false()
         ))).all()
+        standard_items = BatchImportService.normalize_standard_items(biz_type, batch.standard_id, standard_items)
         item_name_map: dict[str, list[VadminSportStandardItem]] = {}
         for item in standard_items:
             item_name_map.setdefault(BatchImportService._clean_cell(item.item_name), []).append(item)
