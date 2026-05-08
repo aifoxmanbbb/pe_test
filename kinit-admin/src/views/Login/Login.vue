@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ElScrollbar } from 'element-plus'
 import { useAppStore } from '@/store/modules/app'
 import { useDesign } from '@/hooks/web/useDesign'
 import { underlineToHump } from '@/utils'
@@ -17,7 +16,7 @@ const title = computed(() => underlineToHump(appStore.getTitle))
 
 <template>
   <div :class="prefixCls" class="login-stage" :style="{ '--login-image': `url(${bgLogin})` }">
-    <ElScrollbar class="h-full">
+    <div class="login-stage__scroll">
       <div class="login-stage__shell">
         <div class="login-stage__topbar">
           <div class="login-stage__brand">
@@ -68,7 +67,7 @@ const title = computed(() => underlineToHump(appStore.getTitle))
           </section>
         </div>
       </div>
-    </ElScrollbar>
+    </div>
   </div>
 </template>
 
@@ -76,12 +75,20 @@ const title = computed(() => underlineToHump(appStore.getTitle))
 @prefix-cls: ~'@{namespace}-login';
 
 .login-stage {
-  min-height: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
   background:
     linear-gradient(90deg, rgba(5, 10, 22, 0.9), rgba(5, 10, 22, 0.38)),
     linear-gradient(180deg, rgba(56, 189, 248, 0.08), transparent 32%),
     var(--login-image) center/cover no-repeat;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.login-stage__scroll {
+  min-height: 100%;
 }
 
 .login-stage__shell {
@@ -309,10 +316,12 @@ const title = computed(() => underlineToHump(appStore.getTitle))
       linear-gradient(180deg, rgba(5, 10, 22, 0.92), rgba(5, 10, 22, 0.72)),
       linear-gradient(180deg, rgba(56, 189, 248, 0.1), transparent 28%),
       var(--login-image) 32% center/cover no-repeat;
+    touch-action: pan-y;
   }
 
   .login-stage__shell {
-    padding: 14px 14px 18px;
+    min-height: auto;
+    padding: 14px 14px calc(18px + env(safe-area-inset-bottom));
   }
 
   .login-stage__topbar {
@@ -389,6 +398,10 @@ const title = computed(() => underlineToHump(appStore.getTitle))
   }
 
   .login-stage__panel {
+    max-height: calc(100dvh - 92px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
     padding: 18px 16px 16px;
     border-radius: 22px;
   }

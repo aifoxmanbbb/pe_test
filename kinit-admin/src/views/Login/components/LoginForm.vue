@@ -107,9 +107,16 @@ const schema = reactive<FormSchema[]>([
             <>
               <div class="flex justify-between items-center w-[100%]">
                 <ElCheckbox v-model={remember.value} label={t('login.remember')} size="small" />
-                <ElButton link type="primary" class="login-switch-link" onClick={openRegisterPanel}>
+                <span
+                  class="login-switch-text"
+                  tabindex="0"
+                  onClick={openRegisterPanel}
+                  onKeydown={(event: KeyboardEvent) => {
+                    if (event.key === 'Enter' || event.key === ' ') openRegisterPanel()
+                  }}
+                >
                   学生自主注册
-                </ElButton>
+                </span>
               </div>
             </>
           )
@@ -378,6 +385,23 @@ const getMenu = async () => {
   width: 100%;
 }
 
+.login-switch-text {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-shadow: 0 1px 12px rgba(125, 211, 252, 0.28);
+  user-select: none;
+}
+
+.login-switch-text:hover,
+.login-switch-text:focus-visible {
+  color: #e0f2fe;
+  outline: none;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
 .auth-slide-enter-active,
 .auth-slide-leave-active {
   transition:
@@ -472,6 +496,15 @@ const getMenu = async () => {
 }
 
 @media (max-width: 520px) {
+  .auth-switch-card.is-register {
+    max-height: calc(100dvh - 178px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 2px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  }
+
   .auth-register__head {
     flex-direction: column;
     gap: 8px;
