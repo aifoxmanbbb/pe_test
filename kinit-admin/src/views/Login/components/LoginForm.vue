@@ -109,6 +109,7 @@ const schema = reactive<FormSchema[]>([
                 <ElCheckbox v-model={remember.value} label={t('login.remember')} size="small" />
                 <span
                   class="login-switch-text"
+                  style={{ color: '#fff' }}
                   tabindex="0"
                   onClick={openRegisterPanel}
                   onKeydown={(event: KeyboardEvent) => {

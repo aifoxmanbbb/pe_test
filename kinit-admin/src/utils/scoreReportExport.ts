@@ -11,6 +11,16 @@ const compactParams = (params: Record<string, any>) => {
   }, {})
 }
 
+const resolveBackendFileUrl = (url: string) => {
+  const fileUrl = String(url || '').trim()
+  if (!fileUrl) return ''
+  if (/^(https?:|blob:|data:)/i.test(fileUrl)) return fileUrl
+  if (fileUrl.startsWith('/api/')) return fileUrl
+  if (fileUrl.startsWith('/media/') || fileUrl.startsWith('/static/')) return `/api${fileUrl}`
+  if (fileUrl.startsWith('media/') || fileUrl.startsWith('static/')) return `/api/${fileUrl}`
+  return fileUrl
+}
+
 export const openScoreReport = async (
   exportApi: ExportApi,
   params: Record<string, any>,
@@ -31,7 +41,7 @@ export const openScoreReport = async (
       return
     }
     ElMessage.success('导出文件已生成')
-    window.open(url)
+    window.open(resolveBackendFileUrl(url), '_blank')
   } catch (error: any) {
     ElMessage.error(error?.message || '导出失败')
   }

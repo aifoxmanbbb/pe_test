@@ -278,6 +278,10 @@ const title = computed(() => underlineToHump(appStore.getTitle))
   color: #7dd3fc;
 }
 
+.login-stage__form :deep(.login-switch-text) {
+  color: #fff !important;
+}
+
 .login-stage__form :deep(.el-button--primary),
 .login-stage__form :deep(.base-button--primary) {
   height: 50px;
