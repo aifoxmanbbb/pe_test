@@ -275,6 +275,15 @@ def build_rate_text(pass_rate: float, excellent_rate: float, full_rate: float) -
     return f"及格{round2(pass_rate)}% / 优秀{round2(excellent_rate)}% / 满分{round2(full_rate)}%"
 
 
+def display_gender(value: str | int | None) -> str:
+    text = str(value or '').strip().lower()
+    if text in {'male', '1', '男'}:
+        return '男'
+    if text in {'female', '0', '女'}:
+        return '女'
+    return str(value or '')
+
+
 def export_scores_to_excel(rows: list[VadminSportScore], filename: str) -> str:
     if not rows:
         return ""
@@ -302,7 +311,7 @@ def export_scores_to_excel(rows: list[VadminSportScore], filename: str) -> str:
         row_data = [
             first.student_name,
             first.student_no,
-            first.gender,
+            display_gender(first.gender),
             first.school_name,
             first.grade_name,
             first.class_name
