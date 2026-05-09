@@ -1,10 +1,11 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from datetime import datetime
 from typing import Optional
-from core.data_types import IdCard, Telephone
+from core.data_types import IdCard
+from core.validator import vali_telephone
 
 
 def normalize_student_gender_value(value) -> str:
@@ -14,6 +15,13 @@ def normalize_student_gender_value(value) -> str:
     if text in {'female', 'f', '0', '2', '\u5973'}:
         return 'female'
     raise ValueError('\u6027\u522b\u5fc5\u987b\u4e3a\u7537\u6216\u5973')
+
+
+def normalize_optional_phone(value) -> str | None:
+    text = str(value or '').strip()
+    if not text:
+        return None
+    return vali_telephone(text)
 
 
 class SchoolOut(BaseModel):
@@ -74,14 +82,14 @@ class StudentOut(BaseModel):
 
 
 class StudentBase(BaseModel):
-    student_no: str
+    student_no: Optional[str] = None
     name: str
     gender: str
     id_card: IdCard
     school_id: int
     grade_id: int
     class_id: int
-    phone: Telephone
+    phone: Optional[str] = None
     birthday: Optional[str] = None
     is_active: bool = True
     remark: Optional[str] = None
@@ -90,6 +98,16 @@ class StudentBase(BaseModel):
     @classmethod
     def validate_gender(cls, value):
         return normalize_student_gender_value(value)
+
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, value):
+        return normalize_optional_phone(value)
+
+    @model_validator(mode='after')
+    def fill_student_no(self):
+        self.student_no = self.id_card
+        return self
 
 
 class StudentIn(StudentBase):
@@ -101,19 +119,23 @@ class StudentUpdate(StudentBase):
 
 
 class StudentRegisterIn(BaseModel):
-    student_no: str
     name: str
     gender: str
     id_card: IdCard
     school_id: int
     grade_id: int
     class_id: int
-    phone: Telephone
+    phone: Optional[str] = None
 
     @field_validator('gender')
     @classmethod
     def validate_gender(cls, value):
         return normalize_student_gender_value(value)
+
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, value):
+        return normalize_optional_phone(value)
 
 
 class SchoolBase(BaseModel):

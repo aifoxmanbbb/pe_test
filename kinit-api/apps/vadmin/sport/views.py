@@ -12,7 +12,7 @@ from apps.vadmin.auth.models import VadminMenu, VadminRole, VadminUser
 from apps.vadmin.auth.utils.current import FullAdminAuth, OpenAuth, AllUserAuth
 from apps.vadmin.auth.utils.validation.auth import Auth
 from application import settings
-from core.validator import vali_id_card, vali_telephone
+from core.validator import vali_id_card
 from utils.excel.import_manage import ImportManage
 from utils.excel.write_xlsx import WriteXlsx
 from utils.response import SuccessResponse, ErrorResponse
@@ -80,8 +80,8 @@ def _serialize(model_obj, schema_class, school_name=None, grade_name=None, class
     return data
 
 
-def _default_user_password(telephone: str) -> str:
-    return telephone[-8:] if settings.DEFAULT_PASSWORD == "0" else settings.DEFAULT_PASSWORD
+def _default_student_password(id_card: str) -> str:
+    return str(id_card or '')[-8:] if settings.DEFAULT_PASSWORD == "0" else settings.DEFAULT_PASSWORD
 
 
 def _normalize_auth_gender(value: str | int | None) -> str:
@@ -475,13 +475,15 @@ async def _sync_student_login_user(
     student: VadminPefStudent | None,
     data: schemas.StudentIn | schemas.StudentUpdate
 ):
-    duplicate_student = await db.scalar(select(VadminPefStudent).where(
-        VadminPefStudent.phone == data.phone,
-        VadminPefStudent.is_delete == false(),
-        VadminPefStudent.id != (student.id if student else 0)
-    ))
-    if duplicate_student:
-        return None, '该手机号已绑定其他学生'
+    phone = str(data.phone or '').strip()
+    if phone:
+        duplicate_student = await db.scalar(select(VadminPefStudent).where(
+            VadminPefStudent.phone == phone,
+            VadminPefStudent.is_delete == false(),
+            VadminPefStudent.id != (student.id if student else 0)
+        ))
+        if duplicate_student:
+            return None, '该手机号已绑定其他学生'
 
     duplicate_id_card = await db.scalar(select(VadminPefStudent).where(
         VadminPefStudent.id_card == data.id_card,
@@ -500,10 +502,12 @@ async def _sync_student_login_user(
             VadminUser.is_delete == false()
         ))
 
-    user_by_phone = await db.scalar(select(VadminUser).where(
-        VadminUser.telephone == data.phone,
-        VadminUser.is_delete == false()
-    ))
+    user_by_phone = None
+    if phone:
+        user_by_phone = await db.scalar(select(VadminUser).where(
+            VadminUser.telephone == phone,
+            VadminUser.is_delete == false()
+        ))
 
     if user_by_phone and current_user and user_by_phone.id != current_user.id:
         return None, '该手机号已被其他系统账号占用'
@@ -512,7 +516,7 @@ async def _sync_student_login_user(
         return None, '该手机号已被其他系统账号占用'
 
     user = current_user
-    telephone_changed = bool(user and user.telephone != data.phone)
+    id_card_changed = bool(user and student and student.id_card != data.id_card)
 
     if not user and user_by_phone:
         other_student = await db.scalar(select(VadminPefStudent).where(
@@ -527,10 +531,10 @@ async def _sync_student_login_user(
     if not user:
         user = VadminUser(
             avatar=settings.DEFAULT_AVATAR,
-            telephone=data.phone,
+            telephone=phone,
             name=data.name,
             nickname=None,
-            password=VadminUser.get_password_hash(_default_user_password(data.phone)),
+            password=VadminUser.get_password_hash(_default_student_password(data.id_card)),
             gender=_normalize_auth_gender(data.gender),
             is_active=data.is_active,
             is_reset_password=False,
@@ -539,14 +543,14 @@ async def _sync_student_login_user(
         db.add(user)
         await db.flush()
 
-    user.telephone = data.phone
+    user.telephone = phone
     user.name = data.name
     user.gender = _normalize_auth_gender(data.gender)
     user.is_active = data.is_active
     user.is_staff = False
 
-    if telephone_changed:
-        user.password = VadminUser.get_password_hash(_default_user_password(data.phone))
+    if id_card_changed:
+        user.password = VadminUser.get_password_hash(_default_student_password(data.id_card))
         user.is_reset_password = False
 
     await db.execute(auth_models.vadmin_auth_user_roles.delete().where(
@@ -557,6 +561,22 @@ async def _sync_student_login_user(
         role_id=role.id
     ))
     return user, None
+
+
+async def _sync_student_score_identity(db, old_student_no: str | None, student: schemas.StudentIn | schemas.StudentUpdate):
+    new_student_no = str(student.student_no or '').strip()
+    old_student_no = str(old_student_no or '').strip()
+    if not old_student_no or not new_student_no or old_student_no == new_student_no:
+        return
+    rows = (await db.scalars(select(VadminSportScore).where(
+        VadminSportScore.student_no == old_student_no,
+        VadminSportScore.is_delete == false()
+    ))).all()
+    for row in rows:
+        row.student_no = new_student_no
+        row.student_name = student.name
+        row.gender = student.gender
+        row.mobile = student.phone
 
 
 def _normalize_entry_gender(value: str | None) -> str:
@@ -732,7 +752,6 @@ def _normalize_student_import_active(value) -> bool:
 
 
 STUDENT_IMPORT_FIELD_LABELS = {
-    "student_no": "学号",
     "name": "姓名",
     "id_card": "身份证",
     "phone": "手机号",
@@ -767,10 +786,9 @@ def _format_student_import_validation_error(exc: ValidationError) -> str:
 
 def _student_import_headers() -> list[dict]:
     return [
-        {"label": "学号", "field": "student_no", "required": True},
         {"label": "姓名", "field": "name", "required": True},
         {"label": "身份证", "field": "id_card", "required": True, "rules": [vali_id_card]},
-        {"label": "手机号", "field": "phone", "required": True, "rules": [vali_telephone]},
+        {"label": "手机号", "field": "phone", "required": False},
         {
             "label": "性别",
             "field": "gender",
@@ -921,7 +939,7 @@ def _apply_student_import_template_validations(writer: WriteXlsx, options: dict,
 
     school_name = define_column_name("student_school_list", 0, options.get("schools") or [])
     if school_name:
-        sheet.data_validation(1, 5, max_row, 5, {'validate': 'list', 'source': f"={school_name}"})
+        sheet.data_validation(1, 4, max_row, 4, {'validate': 'list', 'source': f"={school_name}"})
 
     grade_start_col = 10
     schools = options.get("schools") or []
@@ -940,12 +958,12 @@ def _apply_student_import_template_validations(writer: WriteXlsx, options: dict,
         wb.define_name("student_school_grade_map", f"='_student_options'!$B$1:$C${school_grade_map_rows}")
         sheet.data_validation(
             1,
-            6,
+            5,
             max_row,
-            6,
+            5,
             {
                 'validate': 'list',
-                'source': '=INDIRECT(VLOOKUP($F2,student_school_grade_map,2,FALSE))'
+                'source': '=INDIRECT(VLOOKUP($E2,student_school_grade_map,2,FALSE))'
             }
         )
 
@@ -966,12 +984,12 @@ def _apply_student_import_template_validations(writer: WriteXlsx, options: dict,
         wb.define_name("student_grade_class_map", f"='_student_options'!$D$1:$E${grade_class_map_rows}")
         sheet.data_validation(
             1,
-            7,
+            6,
             max_row,
-            7,
+            6,
             {
                 'validate': 'list',
-                'source': '=INDIRECT(VLOOKUP($F2&"|"&$G2,student_grade_class_map,2,FALSE))'
+                'source': '=INDIRECT(VLOOKUP($E2&"|"&$F2,student_grade_class_map,2,FALSE))'
             }
         )
 
@@ -1427,22 +1445,20 @@ async def register_student(data: schemas.StudentRegisterIn = Body(...), auth: Au
         return ErrorResponse("学校、年级、班级不匹配")
 
     student = await auth.db.scalar(select(VadminPefStudent).where(
-        VadminPefStudent.student_no == data.student_no,
+        VadminPefStudent.id_card == data.id_card,
         VadminPefStudent.is_delete == false()
     ))
     if student:
         if (
             student.name != data.name
             or _normalize_entry_gender(student.gender) != _normalize_entry_gender(data.gender)
-            or (student.id_card and student.id_card != data.id_card)
             or student.school_id != data.school_id
             or student.grade_id != data.grade_id
             or student.class_id != data.class_id
         ):
-            return ErrorResponse("学号对应的学生档案信息不一致，请核对后再注册")
+            return ErrorResponse("身份证对应的学生档案信息不一致，请核对后再注册")
 
     student_data = schemas.StudentIn(
-        student_no=data.student_no,
         name=data.name,
         gender=data.gender,
         id_card=data.id_card,
@@ -1459,14 +1475,15 @@ async def register_student(data: schemas.StudentRegisterIn = Body(...), auth: Au
     payload = student_data.model_dump()
     payload["user_id"] = user.id
     if student:
+        await _sync_student_score_identity(auth.db, student.student_no, student_data)
         for key, value in payload.items():
             setattr(student, key, value)
     else:
         auth.db.add(VadminPefStudent(**payload))
     await auth.db.flush()
     return SuccessResponse(
-        {"password_tip": "默认密码为手机号后8位"},
-        msg="注册成功，请使用手机号和默认密码登录"
+        {"password_tip": "默认密码为身份证后8位"},
+        msg="注册成功，请使用身份证号和默认密码登录"
     )
 
 
@@ -1707,15 +1724,10 @@ async def import_students(
     await importer.get_table_data()
     importer.check_table_data()
 
-    seen_student_nos: set[str] = set()
     seen_id_cards: set[str] = set()
     for item in list(importer.success):
         old_data_list = item.pop("old_data_list")
         try:
-            student_no = _clean_import_text(item.get("student_no"))
-            if student_no in seen_student_nos:
-                raise ValueError("同一导入文件中学号重复")
-            seen_student_nos.add(student_no)
             id_card = vali_id_card(_clean_import_text(item.get("id_card")))
             if id_card in seen_id_cards:
                 raise ValueError("同一导入文件中身份证重复")
@@ -1733,7 +1745,6 @@ async def import_students(
             )
 
             data = schemas.StudentIn(
-                student_no=student_no,
                 name=_clean_import_text(item.get("name")),
                 id_card=id_card,
                 phone=_clean_import_text(item.get("phone")),
@@ -1747,7 +1758,7 @@ async def import_students(
             )
 
             obj = await auth.db.scalar(select(VadminPefStudent).where(
-                VadminPefStudent.student_no == data.student_no,
+                VadminPefStudent.id_card == data.id_card,
                 VadminPefStudent.is_delete == false()
             ))
             if obj and not _student_visible(auth, obj.school_id, obj.class_id):
@@ -1760,6 +1771,7 @@ async def import_students(
             payload = data.model_dump()
             payload["user_id"] = user.id
             if obj:
+                await _sync_student_score_identity(auth.db, obj.student_no, data)
                 for key, value in payload.items():
                     setattr(obj, key, value)
             else:
@@ -1822,6 +1834,7 @@ async def update_student(id: int, data: schemas.StudentUpdate, auth: Auth = Depe
     user, error = await _sync_student_login_user(auth.db, obj, data)
     if error:
         return ErrorResponse(error)
+    await _sync_student_score_identity(auth.db, obj.student_no, data)
     for k, v in data.model_dump().items():
         setattr(obj, k, v)
     obj.user_id = user.id

@@ -12,8 +12,9 @@ from sqlalchemy import select, func, false
 from sqlalchemy.ext.asyncio import AsyncSession
 from application.settings import DEFAULT_AUTH_ERROR_MAX_NUMBER, DEMO, REDIS_DB_ENABLE
 from apps.vadmin.auth import crud, schemas
+from apps.vadmin.sport.models import VadminPefStudent
 from core.database import redis_getter
-from core.validator import vali_telephone
+from core.validator import vali_id_card, vali_telephone
 from utils.count import Count
 
 
@@ -24,7 +25,13 @@ class LoginForm(BaseModel):
     platform: str = '0'  # 登录平台，0：PC端管理系统，1：移动端管理系统
 
     # 重用验证器：https://docs.pydantic.dev/dev-v2/usage/validators/#reuse-validators
-    normalize_telephone = field_validator('telephone')(vali_telephone)
+    @field_validator('telephone')
+    @classmethod
+    def normalize_login_account(cls, value):
+        text = str(value or '').strip()
+        if not text:
+            raise ValueError("请输入手机号或身份证号")
+        return text
 
 
 class WXLoginForm(BaseModel):
@@ -59,6 +66,29 @@ async def has_login_permission(db: AsyncSession, user) -> bool:
     return bool(role_count)
 
 
+async def resolve_login_user(db: AsyncSession, account: str):
+    text = str(account or '').strip()
+    if not text:
+        return None
+
+    user = await crud.UserDal(db).get_data(telephone=text, v_return_none=True)
+    if user:
+        return user
+
+    try:
+        id_card = vali_id_card(text)
+    except ValueError:
+        return None
+
+    student = await db.scalar(select(VadminPefStudent).where(
+        VadminPefStudent.id_card == id_card,
+        VadminPefStudent.is_delete == false()
+    ).order_by(VadminPefStudent.id.desc()))
+    if not student or not student.user_id:
+        return None
+    return await crud.UserDal(db).get_data(id=student.user_id, v_return_none=True)
+
+
 class LoginValidation:
 
     """
@@ -73,9 +103,15 @@ class LoginValidation:
         if data.platform not in ["0", "1"] or data.method not in ["0", "1"]:
             self.result.msg = "无效参数"
             return self.result
-        user = await crud.UserDal(db).get_data(telephone=data.telephone, v_return_none=True)
+        if data.method == "1":
+            try:
+                data.telephone = vali_telephone(data.telephone)
+            except ValueError:
+                self.result.msg = "请输入正确手机号"
+                return self.result
+        user = await resolve_login_user(db, data.telephone)
         if not user:
-            self.result.msg = "该手机号不存在！"
+            self.result.msg = "该账号不存在！"
             return self.result
 
         result = await self.func(self, data=data, user=user, request=request)
@@ -96,9 +132,9 @@ class LoginValidation:
                     user.is_active = False
                     await db.flush()
         elif not user.is_active:
-            self.result.msg = "此手机号已被冻结！"
+            self.result.msg = "此账号已被冻结！"
         elif data.platform in ["0", "1"] and not await has_login_permission(db, user):
-            self.result.msg = "此手机号无权限！"
+            self.result.msg = "此账号无权限！"
         else:
             if not DEMO and count:
                 await count.delete()

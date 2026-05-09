@@ -37,6 +37,15 @@ const publicSchoolOptions = ref<any[]>([])
 const publicGradeOptions = ref<any[]>([])
 const publicClassOptions = ref<any[]>([])
 
+const optionalTelephone = (_rule: any, value: any, callback: (error?: Error) => void) => {
+  const text = String(value ?? '').trim()
+  if (!text) {
+    callback()
+    return
+  }
+  isTelephone(_rule, text, callback)
+}
+
 const rules = {
   telephone: [required()],
   method: [required()],
@@ -59,7 +68,7 @@ const schema = reactive<FormSchema[]>([
   },
   {
     field: 'telephone',
-    label: t('login.telephone'),
+    label: '手机号/身份证号',
     value: '',
     component: 'Input',
     colProps: {
@@ -69,8 +78,8 @@ const schema = reactive<FormSchema[]>([
       style: {
         width: '100%'
       },
-      placeholder: t('login.telephonePlaceholder'),
-      maxlength: 11
+      placeholder: '请输入手机号或身份证号',
+      maxlength: 18
     }
   },
   {
@@ -160,7 +169,6 @@ const loading = ref(false)
 const redirect = ref<string>('')
 
 const registerSchema = reactive<FormSchema[]>([
-  { field: 'student_no', label: '学号', component: 'Input', componentProps: { placeholder: '请输入学号' } },
   { field: 'name', label: '姓名', component: 'Input', componentProps: { placeholder: '请输入姓名' } },
   {
     field: 'id_card',
@@ -184,7 +192,7 @@ const registerSchema = reactive<FormSchema[]>([
     field: 'phone',
     label: '手机号',
     component: 'Input',
-    componentProps: { maxlength: 11, placeholder: '请输入登录手机号' }
+    componentProps: { maxlength: 11, placeholder: '选填，后续可用手机号登录' }
   },
   {
     field: 'school_id',
@@ -230,11 +238,10 @@ const registerSchema = reactive<FormSchema[]>([
 ])
 
 const registerRules = reactive({
-  student_no: [required()],
   name: [required()],
   id_card: [required(), { validator: isIdCard, trigger: 'blur' }],
   gender: [required()],
-  phone: [required(), { validator: isTelephone, trigger: 'blur' }],
+  phone: [{ validator: optionalTelephone, trigger: 'blur' }],
   school_id: [required()],
   grade_id: [required()],
   class_id: [required()]
@@ -260,7 +267,6 @@ const openRegisterPanel = async () => {
   publicSchoolOptions.value = res?.data || []
   await nextTick()
   registerFormMethods.setValues({
-    student_no: '',
     name: '',
     id_card: '',
     gender: 'male',
@@ -284,8 +290,8 @@ const submitRegister = async () => {
   const res = await registerStudentApi(data).catch(() => null)
   registering.value = false
   if (res) {
-    ElMessage.success(res.message || '注册成功，默认密码为手机号后8位')
-    formMethods.setValues({ telephone: data.phone, password: '' })
+    ElMessage.success(res.message || '注册成功，默认密码为身份证后8位')
+    formMethods.setValues({ telephone: data.id_card, password: '' })
     activeMode.value = 'login'
   }
 }
@@ -351,7 +357,7 @@ const getMenu = async () => {
           <div>
             <div class="auth-register__eyebrow">STUDENT ACCESS</div>
             <h3>学生自主注册</h3>
-            <p>完成身份与班级信息登记后，使用手机号和默认密码登录录入成绩。</p>
+            <p>完成身份与班级信息登记后，使用身份证号和默认密码登录录入成绩。</p>
           </div>
           <ElButton link class="auth-register__back" @click="backToLogin">返回登录</ElButton>
         </div>

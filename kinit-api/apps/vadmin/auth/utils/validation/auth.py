@@ -50,7 +50,7 @@ class AuthValidation:
     # status_code = 403 时，表示强制要求重新登录，因无系统权限，而进入到系统访问等问题导致
 
     @classmethod
-    def validate_token(cls, request: Request, token: str | None) -> tuple[str, bool]:
+    def validate_token(cls, request: Request, token: str | None) -> tuple[int | None, str | None, str]:
         """
         验证用户 token
         """
@@ -62,11 +62,12 @@ class AuthValidation:
             )
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-            telephone: str = payload.get("sub")
+            telephone: str | None = payload.get("sub")
+            user_id: int | None = payload.get("uid")
             exp: int = payload.get("exp")
             is_refresh: bool = payload.get("is_refresh")
-            password: bool = payload.get("password")
-            if not telephone or is_refresh or not password:
+            password: str = payload.get("password")
+            if not (telephone or user_id) or is_refresh or not password:
                 raise CustomException(
                     msg="未认证，请您重新登录",
                     code=status.HTTP_403_FORBIDDEN,
@@ -89,7 +90,7 @@ class AuthValidation:
             )
         except jwt.exceptions.ExpiredSignatureError:
             raise CustomException(msg="认证已失效，请您重新登录", code=cls.error_code, status_code=cls.error_code)
-        return telephone, password
+        return user_id, telephone, password
 
     @classmethod
     async def validate_user(cls, request: Request, user: VadminUser, db: AsyncSession, is_all: bool = True) -> Auth:

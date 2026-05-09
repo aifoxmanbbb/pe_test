@@ -16,7 +16,7 @@ from .dept import DeptSimpleOut
 
 class User(BaseModel):
     name: str
-    telephone: Telephone
+    telephone: str | None = None
     email: Email | None = None
     nickname: str | None = None
     avatar: str | None = None
@@ -30,6 +30,7 @@ class UserIn(User):
     """
     创建用户
     """
+    telephone: Telephone
     role_ids: list[int] = []
     dept_ids: list[int] = []
     password: str | None = ""

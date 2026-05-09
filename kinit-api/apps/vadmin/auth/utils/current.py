@@ -19,6 +19,19 @@ from core.database import db_getter
 from .validation.auth import Auth
 
 
+async def _get_token_user(
+    db: AsyncSession,
+    user_id: int | None,
+    telephone: str | None,
+    password: str,
+    **kwargs
+):
+    dal = UserDal(db)
+    if user_id:
+        return await dal.get_data(id=user_id, password=password, v_return_none=True, **kwargs)
+    return await dal.get_data(telephone=telephone, password=password, v_return_none=True, **kwargs)
+
+
 class OpenAuth(AuthValidation):
 
     """
@@ -38,8 +51,8 @@ class OpenAuth(AuthValidation):
         if not settings.OAUTH_ENABLE:
             return Auth(db=db)
         try:
-            telephone, password = self.validate_token(request, token)
-            user = await UserDal(db).get_data(telephone=telephone, password=password, v_return_none=True)
+            user_id, telephone, password = self.validate_token(request, token)
+            user = await _get_token_user(db, user_id, telephone, password)
             return await self.validate_user(request, user, db, is_all=True)
         except CustomException:
             return Auth(db=db)
@@ -63,8 +76,8 @@ class AllUserAuth(AuthValidation):
         """
         if not settings.OAUTH_ENABLE:
             return Auth(db=db)
-        telephone, password = self.validate_token(request, token)
-        user = await UserDal(db).get_data(telephone=telephone, password=password, v_return_none=True)
+        user_id, telephone, password = self.validate_token(request, token)
+        user = await _get_token_user(db, user_id, telephone, password)
         return await self.validate_user(request, user, db, is_all=True)
 
 
@@ -93,16 +106,17 @@ class FullAdminAuth(AuthValidation):
         """
         if not settings.OAUTH_ENABLE:
             return Auth(db=db)
-        telephone, password = self.validate_token(request, token)
+        user_id, telephone, password = self.validate_token(request, token)
         options = [
             joinedload(VadminUser.roles).subqueryload(VadminRole.menus),
             joinedload(VadminUser.roles).subqueryload(VadminRole.depts),
             joinedload(VadminUser.depts)
         ]
-        user = await UserDal(db).get_data(
-            telephone=telephone,
-            password=password,
-            v_return_none=True,
+        user = await _get_token_user(
+            db,
+            user_id,
+            telephone,
+            password,
             v_options=options,
             is_staff=True
         )

@@ -31,7 +31,7 @@ from utils.response import SuccessResponse, ErrorResponse
 from application import settings
 from .login_manage import LoginManage
 from .validation import LoginForm, WXLoginForm
-from .validation.login import has_login_permission
+from .validation.login import has_login_permission, resolve_login_user
 from apps.vadmin.record.models import VadminLoginRecord
 from apps.vadmin.auth.crud import MenuDal, UserDal
 from apps.vadmin.auth.models import VadminUser
@@ -44,24 +44,33 @@ import jwt
 app = APIRouter()
 
 
+def _login_token_payload(user: VadminUser, is_refresh: bool = False) -> dict:
+    return {
+        "sub": user.telephone or str(user.id),
+        "uid": user.id,
+        "is_refresh": is_refresh,
+        "password": user.password
+    }
+
+
 @app.post("/api/login", summary="API 手机号密码登录", description="Swagger API 文档登录认证")
 async def api_login_for_access_token(
     request: Request,
     data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(db_getter)
 ):
-    user = await UserDal(db).get_data(telephone=data.username, v_return_none=True)
+    user = await resolve_login_user(db, data.username)
     error_code = status.HTTP_401_UNAUTHORIZED
     if not user:
-        raise CustomException(status_code=error_code, code=error_code, msg="该手机号不存在")
+        raise CustomException(status_code=error_code, code=error_code, msg="该账号不存在")
     result = VadminUser.verify_password(data.password, user.password)
     if not result:
-        raise CustomException(status_code=error_code, code=error_code, msg="手机号或密码错误")
+        raise CustomException(status_code=error_code, code=error_code, msg="账号或密码错误")
     if not user.is_active:
-        raise CustomException(status_code=error_code, code=error_code, msg="此手机号已被冻结")
+        raise CustomException(status_code=error_code, code=error_code, msg="此账号已被冻结")
     elif not await has_login_permission(db, user):
-        raise CustomException(status_code=error_code, code=error_code, msg="此手机号无权限")
-    access_token = LoginManage.create_token({"sub": user.telephone, "password": user.password})
+        raise CustomException(status_code=error_code, code=error_code, msg="此账号无权限")
+    access_token = LoginManage.create_token(_login_token_payload(user))
     record = LoginForm(platform='2', method='0', telephone=data.username, password=data.password)
     resp = {"access_token": access_token, "token_type": "bearer"}
     await VadminLoginRecord.create_login_record(db, record, True, request, resp)
@@ -86,12 +95,10 @@ async def login_for_access_token(
         if not result.status:
             raise ValueError(result.msg)
 
-        access_token = LoginManage.create_token(
-            {"sub": result.user.telephone, "is_refresh": False, "password": result.user.password}
-        )
+        access_token = LoginManage.create_token(_login_token_payload(result.user))
         expires = timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
         refresh_token = LoginManage.create_token(
-            payload={"sub": result.user.telephone, "is_refresh": True, "password": result.user.password},
+            payload=_login_token_payload(result.user, is_refresh=True),
             expires=expires
         )
         resp = {
@@ -136,10 +143,10 @@ async def wx_login_for_access_token(
     await UserDal(db).update_login_info(user, request.client.host)
 
     # 登录成功创建 token
-    access_token = LoginManage.create_token({"sub": user.telephone, "is_refresh": False, "password": user.password})
+    access_token = LoginManage.create_token(_login_token_payload(user))
     expires = timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
     refresh_token = LoginManage.create_token(
-        payload={"sub": user.telephone, "is_refresh": True, "password": user.password},
+        payload=_login_token_payload(user, is_refresh=True),
         expires=expires
     )
     resp = {
@@ -166,19 +173,20 @@ async def token_refresh(refresh: str = Body(..., title="刷新Token")):
     try:
         payload = jwt.decode(refresh, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         telephone: str = payload.get("sub")
+        user_id: int | None = payload.get("uid")
         is_refresh: bool = payload.get("is_refresh")
         password: str = payload.get("password")
-        if not telephone or not is_refresh or not password:
+        if not (telephone or user_id) or not is_refresh or not password:
             return ErrorResponse("未认证，请您重新登录", code=error_code, status=error_code)
     except jwt.exceptions.InvalidSignatureError:
         return ErrorResponse("无效认证，请您重新登录", code=error_code, status=error_code)
     except jwt.exceptions.ExpiredSignatureError:
         return ErrorResponse("登录已超时，请您重新登录", code=error_code, status=error_code)
 
-    access_token = LoginManage.create_token({"sub": telephone, "is_refresh": False, "password": password})
+    access_token = LoginManage.create_token({"sub": telephone, "uid": user_id, "is_refresh": False, "password": password})
     expires = timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
     refresh_token = LoginManage.create_token(
-        payload={"sub": telephone, "is_refresh": True, "password": password},
+        payload={"sub": telephone, "uid": user_id, "is_refresh": True, "password": password},
         expires=expires
     )
     resp = {

@@ -45,10 +45,18 @@ const displayGender = (value: unknown) => {
   return '-'
 }
 
+const optionalTelephone = (_rule: any, value: any, callback: (error?: Error) => void) => {
+  const text = String(value ?? '').trim()
+  if (!text) {
+    callback()
+    return
+  }
+  isTelephone(_rule, text, callback)
+}
+
 const searchSchema = reactive<FormSchema[]>([{ field: 'name', label: '学生姓名', component: 'Input' }])
 
 const tableColumns = reactive<TableColumn[]>([
-  { field: 'student_no', label: '学号', width: '120px', show: true },
   { field: 'name', label: '姓名', width: '100px', show: true },
   { field: 'id_card', label: '身份证', width: '180px', show: true },
   { field: 'phone', label: '手机号', width: '130px', show: true },
@@ -101,7 +109,6 @@ const importDialogVisible = ref(false)
 const currentId = ref<number | null>(null)
 
 const formSchema = reactive<FormSchema[]>([
-  { field: 'student_no', label: '学号', component: 'Input' },
   { field: 'name', label: '姓名', component: 'Input' },
   {
     field: 'id_card',
@@ -167,10 +174,9 @@ const formSchema = reactive<FormSchema[]>([
 ])
 
 const rules = reactive({
-  student_no: [required()],
   name: [required()],
   id_card: [required(), { validator: isIdCard, trigger: 'blur' }],
-  phone: [required(), { validator: isTelephone, trigger: 'blur' }],
+  phone: [{ validator: optionalTelephone, trigger: 'blur' }],
   gender: [required()],
   school_id: [required()],
   grade_id: [required()],
@@ -182,7 +188,6 @@ const handleAdd = () => {
   dialogVisible.value = true
   nextTick(() =>
     formMethods.setValues({
-      student_no: '',
       name: '',
       id_card: '',
       phone: '',
@@ -216,7 +221,7 @@ const submit = async () => {
   if (!valid) return
   const data = await formMethods.getFormData()
   if (!data) return
-  const payload = { ...data, gender: normalizeGender(data.gender) }
+  const payload = { ...data, phone: String(data.phone || '').trim() || null, gender: normalizeGender(data.gender) }
   const res = currentId.value
     ? await updateStudentApi(currentId.value, payload)
     : await createStudentApi(payload)
