@@ -6,9 +6,9 @@ SET NAMES utf8mb4;
 
 DROP TEMPORARY TABLE IF EXISTS tmp_fitness_strength_segments;
 CREATE TEMPORARY TABLE tmp_fitness_strength_segments (
-  stage_type varchar(16) NOT NULL,
-  item_code varchar(32) NOT NULL,
-  gender varchar(16) NOT NULL,
+  stage_type varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  item_code varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  gender varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   segment_json JSON NOT NULL,
   PRIMARY KEY (stage_type, item_code, gender)
 );
@@ -23,9 +23,9 @@ VALUES
 UPDATE vadmin_pef_standard_item si
 JOIN vadmin_pef_standard s ON s.id = si.standard_id
 JOIN tmp_fitness_strength_segments seg
-  ON seg.stage_type = s.stage_type
- AND seg.item_code = si.item_code
- AND seg.gender = si.gender
+  ON seg.stage_type = s.stage_type COLLATE utf8mb4_general_ci
+ AND seg.item_code = si.item_code COLLATE utf8mb4_general_ci
+ AND seg.gender = si.gender COLLATE utf8mb4_general_ci
 SET
   si.calc_mode = 'segment',
   si.pass_threshold = NULL,
