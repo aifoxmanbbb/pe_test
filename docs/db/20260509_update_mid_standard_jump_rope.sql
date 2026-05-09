@@ -1,10 +1,10 @@
 -- 2026-05-09 初中标准项目调整：
--- 1) 在以下标准中禁用 1000米/800米：
+-- 1) 在以下标准中开启/恢复 1000米/800米：
 --    - 国家学生体质健康测试（初中）
 --    - 学生体质健康达标比赛评分标准（初中）
 -- 2) 添加/恢复 立定跳远、1分钟跳绳。
 -- 说明：vadmin_pef_standard_item 没有 disabled 字段，系统按 is_delete=0 读取项目，
---       因此“禁用”使用逻辑删除；新增项目优先复用库内已有同名项目的评分段。
+--       因此“开启”使用恢复逻辑删除；新增项目优先复用库内已有同名项目的评分段。
 
 SET NAMES utf8mb4;
 
@@ -22,14 +22,21 @@ WHERE is_delete = 0
     '学生体质健康达标比赛评分标准（初中）'
   );
 
--- 禁用 1000米/800米及其门槛项。
+-- 开启/恢复 1000米/800米及其门槛项。
 UPDATE vadmin_pef_standard_item si
 JOIN tmp_mid_standard_target ts ON ts.id = si.standard_id
 SET
-  si.is_delete = 1,
-  si.is_gate_item = 0,
+  si.is_delete = 0,
+  si.is_required = 1,
+  si.is_gate_item = CASE
+    WHEN si.calc_mode = 'threshold'
+      OR si.item_code IN ('run_gate', '1000m_gate', '800m_gate')
+      OR si.item_name LIKE '%门槛%'
+      THEN 1
+    ELSE si.is_gate_item
+  END,
   si.update_datetime = NOW()
-WHERE si.is_delete = 0
+WHERE si.is_delete = 1
   AND (
     si.item_code IN ('run_1000', 'run_800', 'run_gate', '1000m', '800m', '1000m_gate', '800m_gate')
     OR si.item_name IN ('1000米', '1000米跑', '男生1000米', '男生1000米(门槛)', '800米', '800米跑', '女生800米', '女生800米(门槛)')
