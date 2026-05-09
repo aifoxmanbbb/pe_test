@@ -387,6 +387,8 @@ def _parse_raw_score(raw: Any, item_code: str | None = None) -> float | None:
     if parsed is None:
         return None
     code = str(item_code or '').lower()
+    if parsed < 0 and code != 'sit':
+        return None
     if code in {'jump', 'ball'} and parsed > 30:
         return round2(parsed / 100.0)
     return parsed

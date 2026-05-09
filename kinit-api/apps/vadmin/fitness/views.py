@@ -484,8 +484,16 @@ def _normalize_gender_strict(gender: str | None) -> str:
     return 'all'
 
 
-def _parse_raw_score(raw: Any) -> float | None:
-    return RuleEngine.parse_time_to_seconds(raw)
+def _allows_negative_raw_score(item_code: str | None = None, item_name: str | None = None) -> bool:
+    text = f"{item_code or ''} {item_name or ''}".lower()
+    return (item_code or '').lower() == 'sit' or '坐位体前屈' in text
+
+
+def _parse_raw_score(raw: Any, item_code: str | None = None, item_name: str | None = None) -> float | None:
+    parsed = RuleEngine.parse_time_to_seconds(raw)
+    if parsed is not None and parsed < 0 and not _allows_negative_raw_score(item_code, item_name):
+        return None
+    return parsed
 
 
 def _select_rule(item_rules: list[VadminSportStandardItem], gender: str | None) -> VadminSportStandardItem | None:
@@ -549,7 +557,12 @@ def _calc_by_rule(
             except Exception:
                 segments = None
         if isinstance(segments, list) and segments:
-            return RuleEngine.eval_by_segment(raw_score, segments, grade_name=grade_name, conflict_policy=conflict_policy)
+            result = RuleEngine.eval_by_segment(raw_score, segments, grade_name=grade_name, conflict_policy=conflict_policy)
+            max_score = to_float(getattr(rule, 'max_score', 0), default=0.0)
+            score_value = to_float(result.get('score_value'), default=0.0)
+            if max_score > 0 and max_score < score_value <= 100:
+                result['score_value'] = round2((score_value / 100.0) * max_score)
+            return result
         return {}
 
     pass_v = to_float(rule.pass_threshold, default=0.0)
@@ -1642,9 +1655,13 @@ async def upsert_scores(
         if not _in_scope(auth, item.get('school_name'), item.get('class_name')):
             continue
 
-        raw_score_parsed = _parse_raw_score(item.get('raw_score'))
         item_rules = item_rule_map.get(item.get('item_code') or '', [])
         selected_rule = _select_rule(item_rules, item.get('gender'))
+        raw_score_parsed = _parse_raw_score(
+            item.get('raw_score'),
+            item.get('item_code'),
+            selected_rule.item_name if selected_rule else item.get('item_name')
+        )
         calc_result = _calc_by_rule(raw_score_parsed, selected_rule, conflict_policy, item.get('grade_name', ''))
 
         student = student_map.get(item.get('student_no'))

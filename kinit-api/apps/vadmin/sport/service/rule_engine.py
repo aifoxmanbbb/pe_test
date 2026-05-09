@@ -28,6 +28,7 @@ class RuleEngine:
         if text is None: return None
         text = str(text).strip()
         if not text: return None
+        text = text.replace('−', '-').replace('－', '-')
         
         # 1. 尝试匹配 分'秒" 或 分'秒
         m = re.match(r'^(\d+)[\'|分]\s*(\d+(?:\.\d+)?)[\"|秒]?$', text)
@@ -35,7 +36,7 @@ class RuleEngine:
             return float(m.group(1)) * 60 + float(m.group(2))
         
         # 2. 尝试匹配 纯秒数 (如 12.5)
-        if re.fullmatch(r'\d+(\.\d+)?', text):
+        if re.fullmatch(r'[+-]?\d+(\.\d+)?', text):
             return float(text)
             
         return None
@@ -58,11 +59,11 @@ class RuleEngine:
                 return {'min': min(v1, v2), 'max': max(v1, v2)}
         
         # 处理带比较符的
-        for symbol in ['≤', '<=', '≥', '>=']:
+        for symbol, key in [('≤', 'max'), ('<=', 'max'), ('≥', 'min'), ('>=', 'min')]:
             if range_str.startswith(symbol):
                 v = RuleEngine.parse_time_to_seconds(range_str.replace(symbol, ''))
                 if v is not None:
-                    return {'max' if '≤' in symbol or '<' in symbol else 'min': v}
+                    return {key: v}
         
         # 处理单值 (可能是阈值)
         v = RuleEngine.parse_time_to_seconds(range_str)

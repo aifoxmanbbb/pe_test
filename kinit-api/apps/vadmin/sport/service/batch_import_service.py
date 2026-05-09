@@ -83,6 +83,12 @@ class BatchImportService:
         return code in BatchImportService.FITNESS_REMOVED_ITEM_CODES or name in BatchImportService.FITNESS_REMOVED_ITEM_NAMES
 
     @staticmethod
+    def _allows_negative_score_item(item) -> bool:
+        code = BatchImportService._clean_cell(getattr(item, "item_code", "")).lower()
+        name = BatchImportService._clean_cell(getattr(item, "item_name", ""))
+        return code == "sit" or "坐位体前屈" in name
+
+    @staticmethod
     def normalize_standard_items(biz_type: str, standard_id: int | None, items: list) -> list:
         normalized = list(items or [])
         if biz_type != 'fitness':
@@ -411,8 +417,12 @@ class BatchImportService:
 
             if BatchImportService._clean_cell(raw_score) == "":
                 row_errors.append("成绩不能为空")
-            elif RuleEngine.parse_time_to_seconds(raw_score) is None:
-                row_errors.append(f"成绩格式不正确：{raw_score}")
+            else:
+                parsed_raw_score = RuleEngine.parse_time_to_seconds(raw_score)
+                if parsed_raw_score is None:
+                    row_errors.append(f"成绩格式不正确：{raw_score}")
+                elif parsed_raw_score < 0 and not BatchImportService._allows_negative_score_item(selected_item):
+                    row_errors.append(f"成绩不能为负数：{raw_score}")
 
             if row_errors:
                 errors.append(f"第 {row_number} 行：{'；'.join(row_errors)}")

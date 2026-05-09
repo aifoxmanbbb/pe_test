@@ -110,6 +110,14 @@ def _format_rule_range(value) -> str:
     return str(value).strip()
 
 
+def _format_rule_score(score, max_score) -> str:
+    score_value = to_float(score, default=0.0)
+    max_value = to_float(max_score, default=0.0)
+    if max_value > 0 and max_value < score_value <= 100:
+        return f"{round2((score_value / 100.0) * max_value):g}"
+    return str(score if score not in (None, '') else 0)
+
+
 def _build_standard_item_help_lines(items: list[VadminSportStandardItem]) -> list[str]:
     lines: list[str] = []
     for item in items:
@@ -133,10 +141,12 @@ def _build_standard_item_help_lines(items: list[VadminSportStandardItem]) -> lis
                                 continue
                             grade_prefix = f'/{grade}' if grade else ''
                             lines.append(
-                                f"{prefix}{grade_prefix}：{_format_rule_range(rule.get('range'))} -> {rule.get('score', 0)}分"
+                                f"{prefix}{grade_prefix}：{_format_rule_range(rule.get('range'))} -> {_format_rule_score(rule.get('score'), item.max_score)}分"
                             )
                     else:
-                        lines.append(f"{prefix}：{_format_rule_range(seg.get('range'))} -> {seg.get('score', 0)}分")
+                        lines.append(
+                            f"{prefix}：{_format_rule_range(seg.get('range'))} -> {_format_rule_score(seg.get('score'), item.max_score)}分"
+                        )
             continue
 
         threshold_parts: list[str] = []
@@ -638,6 +648,8 @@ def _parse_entry_raw_score(raw, item_code: str | None = None) -> float | None:
     if parsed is None:
         return None
     code = str(item_code or '').lower()
+    if parsed < 0 and code != 'sit':
+        return None
     if code in {'jump', 'ball'} and parsed > 30:
         return round2(parsed / 100.0)
     return parsed

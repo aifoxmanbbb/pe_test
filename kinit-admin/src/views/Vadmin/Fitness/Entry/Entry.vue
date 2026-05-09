@@ -14,12 +14,15 @@ import {
 } from '@/api/vadmin/fitness'
 import { getSchoolOptionsApi, getStandardItemOptionsApi, getStudentListApi } from '@/api/vadmin/sport'
 import ScoreImport from '@/views/Vadmin/Sport/components/ScoreImport.vue'
+import { getScoreInputPlaceholder } from '@/utils/scoreInputPlaceholder'
 
 defineOptions({ name: 'FitnessScoreEntry' })
 
 type StandardItemOption = {
   label: string
   value: string
+  item_name?: string
+  calc_mode?: string
   help_lines?: string[]
 }
 
@@ -260,7 +263,7 @@ onMounted(async () => {
             min-width="150"
           >
             <template #default="{ row }">
-              <ElInput v-model="row.raw_scores[item.value]" placeholder="输入成绩" />
+              <ElInput v-model="row.raw_scores[item.value]" :placeholder="getScoreInputPlaceholder(item)" />
             </template>
           </ElTableColumn>
         </template>
@@ -273,7 +276,7 @@ onMounted(async () => {
             min-width="180"
           >
             <template #default="{ row }">
-              <ElInput v-model="row.raw_score" placeholder="请输入成绩，如 3'20 或 50" />
+              <ElInput v-model="row.raw_score" :placeholder="getScoreInputPlaceholder(currentItemOption)" />
             </template>
           </ElTableColumn>
         </template>

@@ -18,6 +18,7 @@ import {
   getStudentSelfEntryOptionsApi,
   submitStudentSelfEntryApi
 } from '@/api/vadmin/sport'
+import { getScoreInputPlaceholder } from '@/utils/scoreInputPlaceholder'
 
 defineOptions({ name: 'StudentSelfEntry' })
 
@@ -25,6 +26,7 @@ type EntryItem = {
   label: string
   value: string
   item_name?: string
+  calc_mode?: string
   help_lines?: string[]
 }
 
@@ -91,7 +93,7 @@ const submit = async () => {
     .map((item) => ({
       item_code: item.value,
       item_name: item.item_name || item.label,
-      raw_score: String(rawScores.value[item.value] || '').trim()
+      raw_score: String(rawScores.value[item.value] ?? '').trim()
     }))
     .filter((item) => item.raw_score)
 
@@ -168,7 +170,7 @@ onMounted(loadData)
                 <QuestionFilled />
               </ElIcon>
             </div>
-            <ElInput v-model="rawScores[item.value]" placeholder="填写原始成绩" clearable />
+            <ElInput v-model="rawScores[item.value]" :placeholder="getScoreInputPlaceholder(item)" clearable />
           </div>
         </div>
 
