@@ -31,6 +31,20 @@ const gradeOptions = ref([])
 const classOptions = ref([])
 const { required, isTelephone, isIdCard } = useValidator()
 
+const normalizeGender = (value: unknown) => {
+  const text = String(value ?? '').trim().toLowerCase()
+  if (['male', 'm', '1', '\u7537'].includes(text)) return 'male'
+  if (['female', 'f', '0', '2', '\u5973'].includes(text)) return 'female'
+  return ''
+}
+
+const displayGender = (value: unknown) => {
+  const gender = normalizeGender(value)
+  if (gender === 'male') return '\u7537'
+  if (gender === 'female') return '\u5973'
+  return '-'
+}
+
 const searchSchema = reactive<FormSchema[]>([{ field: 'name', label: '学生姓名', component: 'Input' }])
 
 const tableColumns = reactive<TableColumn[]>([
@@ -47,7 +61,7 @@ const tableColumns = reactive<TableColumn[]>([
     width: '80px',
     show: true,
     slots: {
-      default: (data: any) => <span>{data.row.gender === 'male' ? '男' : '女'}</span>
+      default: (data: any) => <span>{displayGender(data.row.gender)}</span>
     }
   },
   {
@@ -172,7 +186,7 @@ const handleAdd = () => {
       name: '',
       id_card: '',
       phone: '',
-      gender: 'male',
+      gender: '',
       school_id: null,
       grade_id: null,
       class_id: null
@@ -193,7 +207,7 @@ const handleEdit = async (row: any) => {
   ])
   if (gRes) gradeOptions.value = gRes.data
   if (cRes) classOptions.value = cRes.data
-  nextTick(() => formMethods.setValues(row))
+  nextTick(() => formMethods.setValues({ ...row, gender: normalizeGender(row.gender) }))
 }
 
 const submit = async () => {
@@ -202,9 +216,10 @@ const submit = async () => {
   if (!valid) return
   const data = await formMethods.getFormData()
   if (!data) return
+  const payload = { ...data, gender: normalizeGender(data.gender) }
   const res = currentId.value
-    ? await updateStudentApi(currentId.value, data)
-    : await createStudentApi(data)
+    ? await updateStudentApi(currentId.value, payload)
+    : await createStudentApi(payload)
   if (res) {
     ElMessage.success('保存成功')
     dialogVisible.value = false

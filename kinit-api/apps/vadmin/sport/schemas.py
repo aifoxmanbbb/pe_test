@@ -1,10 +1,20 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from datetime import datetime
 from typing import Optional
 from core.data_types import IdCard, Telephone
+
+
+def normalize_student_gender_value(value) -> str:
+    text = str(value or '').strip().lower()
+    if text in {'male', 'm', '1', '\u7537'}:
+        return 'male'
+    if text in {'female', 'f', '0', '2', '\u5973'}:
+        return 'female'
+    raise ValueError('\u6027\u522b\u5fc5\u987b\u4e3a\u7537\u6216\u5973')
+
 
 class SchoolOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -76,6 +86,11 @@ class StudentBase(BaseModel):
     is_active: bool = True
     remark: Optional[str] = None
 
+    @field_validator('gender')
+    @classmethod
+    def validate_gender(cls, value):
+        return normalize_student_gender_value(value)
+
 
 class StudentIn(StudentBase):
     pass
@@ -94,6 +109,11 @@ class StudentRegisterIn(BaseModel):
     grade_id: int
     class_id: int
     phone: Telephone
+
+    @field_validator('gender')
+    @classmethod
+    def validate_gender(cls, value):
+        return normalize_student_gender_value(value)
 
 
 class SchoolBase(BaseModel):

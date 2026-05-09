@@ -44,7 +44,7 @@ app = APIRouter()
 
 STAGE_SET = {'primary', 'mid', 'high', 'university'}
 STUDENT_ROLE_KEY = 'student_parent'
-STUDENT_ROLE_NAME = '家长'
+STUDENT_ROLE_NAME = '学生'
 STUDENT_ROOT_PERM = 'sport.student'
 STUDENT_SCORE_PERM = 'sport.student.scores'
 STUDENT_ENTRY_PERM = 'sport.student.entry'

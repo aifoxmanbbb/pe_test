@@ -122,6 +122,12 @@ const fitnessStateTrendOptions = reactive<any>({
 })
 
 const profile = computed(() => peData.value?.profile || fitnessData.value?.profile || null)
+const displayGender = (value: unknown) => {
+  const text = String(value ?? '').trim().toLowerCase()
+  if (['male', 'm', '1', '\u7537'].includes(text)) return '\u7537'
+  if (['female', 'f', '0', '2', '\u5973'].includes(text)) return '\u5973'
+  return '-'
+}
 const fitnessDetailColumns = computed(() => fitnessData.value?.detail_columns || [])
 const peLatestScore = computed(() => Number(peData.value?.stats?.latest_total || 0))
 const fitnessLatestScore = computed(() => {
@@ -425,7 +431,7 @@ useHeaderTheme(() => 'fitness', headerThemeMap, 'fitness')
         <ElCard shadow="never" class="analysis-card mb-12px" header="个人档案">
           <ElDescriptions :column="descColumns" border>
             <ElDescriptionsItem label="姓名">{{ profile.student_name || '-' }}</ElDescriptionsItem>
-            <ElDescriptionsItem label="性别">{{ profile.gender || '-' }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="性别">{{ displayGender(profile.gender) }}</ElDescriptionsItem>
             <ElDescriptionsItem label="学号">{{ profile.student_no || '-' }}</ElDescriptionsItem>
             <ElDescriptionsItem label="学校">{{ profile.school || '-' }}</ElDescriptionsItem>
             <ElDescriptionsItem label="年级">{{ profile.grade || '-' }}</ElDescriptionsItem>
