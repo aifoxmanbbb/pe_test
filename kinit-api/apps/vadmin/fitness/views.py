@@ -842,16 +842,21 @@ async def get_student_analysis(
             limit=24
         )
     # 兼容基础档案与批次字段不一致场景：按学生号回退推导批次
-    if not batches and student_no:
+    if student_no:
+        fallback_batches: list[VadminSportBatch] = []
         for candidate in [
             (school_name, grade_name, class_name),
             (school_name, grade_name, None),
             (school_name, None, None),
             (None, None, None)
         ]:
-            batches = await _fallback_batches_by_student(*candidate)
-            if batches:
+            fallback_batches = await _fallback_batches_by_student(*candidate)
+            if fallback_batches:
                 break
+        batch_lookup = {b.id: b for b in batches}
+        for b in fallback_batches:
+            batch_lookup.setdefault(b.id, b)
+        batches = sorted(batch_lookup.values(), key=lambda item: item.id, reverse=True)
     batches = [b for b in batches if _in_scope(auth, b.school_name, b.class_name)]
     if not batches:
         logger.info(
@@ -1725,6 +1730,9 @@ async def upsert_scores(
             VadminSportScore.batch_id == batch_id,
             VadminSportScore.student_no.in_(student_nos),
             VadminSportScore.item_code.in_(['height', 'weight', 'bmi'])
+        ).order_by(
+            VadminSportScore.update_datetime.desc().nullslast(),
+            VadminSportScore.id.desc()
         ))).all()
         for row in existing_rows:
             student_no = row.student_no
@@ -1788,7 +1796,7 @@ async def upsert_scores(
             item_code
         )
 
-        student = student_map.get(item.get('student_no'))
+        student = student_map.get(student_no)
         mobile = student.phone if student else item.get('mobile')
         item_name = selected_rule.item_name if selected_rule else item.get('item_name')
 
@@ -1809,8 +1817,11 @@ async def upsert_scores(
             VadminSportScore.is_delete == false(),
             VadminSportScore.biz_type == 'fitness',
             VadminSportScore.batch_id == batch_id,
-            VadminSportScore.student_no == item.get('student_no'),
-            VadminSportScore.item_code == item.get('item_code')
+            VadminSportScore.student_no == student_no,
+            VadminSportScore.item_code == item_code
+        ).order_by(
+            VadminSportScore.update_datetime.desc().nullslast(),
+            VadminSportScore.id.desc()
         ).limit(1)
         row = (await auth.db.scalars(sql)).first()
         if row:
@@ -1826,15 +1837,15 @@ async def upsert_scores(
         else:
             auth.db.add(VadminSportScore(
                 biz_type='fitness',
-                batch_id=batch_id,
-                student_no=item.get('student_no'),
-                student_name=item.get('student_name'),
-                gender=item.get('gender'),
+            batch_id=batch_id,
+            student_no=student_no,
+            student_name=item.get('student_name'),
+            gender=item.get('gender'),
                 mobile=mobile,
                 school_name=item.get('school_name'),
                 grade_name=item.get('grade_name'),
                 class_name=item.get('class_name'),
-                item_code=item.get('item_code'),
+                item_code=item_code,
                 item_name=item_name,
                 raw_score=raw_score_parsed,
                 score_value=score_value,
