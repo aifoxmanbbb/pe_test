@@ -1724,17 +1724,17 @@ async def upsert_scores(
     existing_hw: dict[str, dict[str, float]] = {}
     existing_bmi_map: dict[str, VadminSportScore] = {}
     if student_nos:
-    existing_rows = (await auth.db.scalars(select(VadminSportScore).where(
-        VadminSportScore.is_delete == false(),
-        VadminSportScore.biz_type == 'fitness',
-        VadminSportScore.batch_id == batch_id,
-        VadminSportScore.student_no.in_(student_nos),
-        VadminSportScore.item_code.in_(['height', 'weight', 'bmi'])
-    ).order_by(
-        VadminSportScore.update_datetime.is_not(None).desc(),
-        VadminSportScore.update_datetime.desc(),
-        VadminSportScore.id.desc()
-    ))).all()
+        existing_rows = (await auth.db.scalars(select(VadminSportScore).where(
+            VadminSportScore.is_delete == false(),
+            VadminSportScore.biz_type == 'fitness',
+            VadminSportScore.batch_id == batch_id,
+            VadminSportScore.student_no.in_(student_nos),
+            VadminSportScore.item_code.in_(['height', 'weight', 'bmi'])
+        ).order_by(
+            VadminSportScore.update_datetime.is_not(None).desc(),
+            VadminSportScore.update_datetime.desc(),
+            VadminSportScore.id.desc()
+        ))).all()
         for row in existing_rows:
             student_no = row.student_no
             if not student_no:
