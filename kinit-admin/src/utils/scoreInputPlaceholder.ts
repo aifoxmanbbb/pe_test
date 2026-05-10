@@ -1,6 +1,7 @@
 type ScoreInputItem = {
   label?: string
   value?: string
+  item_code?: string
   item_name?: string
   calc_mode?: string | null
 }
@@ -12,7 +13,7 @@ const getItemName = (item?: ScoreInputItem | null) => String(item?.item_name || 
 export const getScoreInputPlaceholder = (item?: ScoreInputItem | null) => {
   if (!item) return '成绩'
 
-  const code = String(item.value || '').toLowerCase()
+  const code = String(item.value || item.item_code || '').toLowerCase()
   const name = getItemName(item)
   const signature = `${code} ${name}`.toLowerCase()
 
@@ -34,8 +35,11 @@ export const getScoreInputPlaceholder = (item?: ScoreInputItem | null) => {
   if (includesAny(signature, ['跳绳', '引体向上', '仰卧起坐']) || includesAny(code, ['rope', 'pull_up', 'sit_up'])) {
     return '次'
   }
-  if (includesAny(signature, ['跳远', '实心球', '掷实心球']) || includesAny(code, ['jump', 'ball'])) {
-    return '米'
+  if (
+    includesAny(signature, ['立定跳远', '跳远', '实心球', '掷实心球']) ||
+    includesAny(code, ['jump', 'ball'])
+  ) {
+    return 'cm'
   }
   if (
     includesAny(signature, ['跑', '游泳', '50米', '100米', '800米', '1000米']) ||

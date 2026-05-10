@@ -97,6 +97,14 @@ const renderHeaderLabel = (label: string, helpLines?: string[]) => {
   )
 }
 
+const displayGender = (value: any) => {
+  const text = String(value || '').trim().toLowerCase()
+  if (!text) return '-'
+  if (text === 'male' || text === 'm' || text === '1' || text.includes('男')) return '男'
+  if (text === 'female' || text === 'f' || text === '0' || text === '2' || text.includes('女')) return '女'
+  return text
+}
+
 const searchSchema = computed<FormSchema[]>(() => {
   const schema: FormSchema[] = [
     {
@@ -266,6 +274,11 @@ onMounted(async () => {
         <ElTableColumn prop="student_no" label="学号" width="120" fixed="left" />
         <ElTableColumn prop="student_name" label="姓名" width="100" fixed="left" />
         <ElTableColumn prop="class_name" label="班级" width="120" />
+        <ElTableColumn label="性别" width="70">
+          <template #default="{ row }">
+            <span>{{ displayGender(row.gender) }}</span>
+          </template>
+        </ElTableColumn>
         
         <!-- 按学生录入模式：动态展示所有项目列 -->
         <template v-if="entryMode === 'student'">

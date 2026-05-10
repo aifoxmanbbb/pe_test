@@ -179,13 +179,15 @@ def _fitness_slots(rows: list[VadminSportScore]) -> tuple[dict[str, str], dict[s
 def _rows_item_avg_score(rows: list[VadminSportScore], item_code: str) -> float:
     if not item_code:
         return 0.0
-    return avg([to_float(r.score_value) for r in rows if r.item_code == item_code])
+    normalized_code = _normalize_entry_item_code(item_code)
+    return avg([to_float(r.score_value) for r in rows if _normalize_entry_item_code(r.item_code) == normalized_code])
 
 
 def _rows_item_avg_raw(rows: list[VadminSportScore], item_code: str) -> float:
     if not item_code:
         return 0.0
-    return avg([to_float(r.raw_score) for r in rows if r.item_code == item_code])
+    normalized_code = _normalize_entry_item_code(item_code)
+    return avg([to_float(r.raw_score) for r in rows if _normalize_entry_item_code(r.item_code) == normalized_code])
 
 
 def _item_columns(rows: list[VadminSportScore]) -> list[dict[str, str]]:
@@ -333,7 +335,7 @@ def _normalize_gender(value: str | None) -> str:
 def _build_standard_item_count_map(items: list[VadminSportStandardItem]) -> dict[int, dict[str, int]]:
     bucket: dict[int, dict[str, set[str]]] = {}
     for item in items:
-        item_code = str(item.item_code or '').strip()
+        item_code = _normalize_entry_item_code(item.item_code)
         if not item_code:
             continue
         sid = int(item.standard_id)
@@ -352,21 +354,21 @@ def _build_standard_item_count_map(items: list[VadminSportStandardItem]) -> dict
     }
 
 
-def _build_standard_item_gender_map(items: list[VadminSportStandardItem]) -> dict[int, dict[str, str]]:
-    bucket: dict[int, dict[str, str]] = {}
+def _build_standard_item_gender_map(items: list[VadminSportStandardItem]) -> dict[int, dict[str, set[str]]]:
+    bucket: dict[int, dict[str, set[str]]] = {}
     for item in items:
-        item_code = str(item.item_code or '').strip()
+        item_code = _normalize_entry_item_code(item.item_code)
         if not item_code:
             continue
         sid = int(item.standard_id)
-        bucket.setdefault(sid, {})[item_code] = _normalize_gender_strict(item.gender)
+        bucket.setdefault(sid, {}).setdefault(item_code, set()).add(_normalize_gender_strict(item.gender))
     return bucket
 
 
 def _filter_rows_by_standard_gender(
         rows: list[VadminSportScore],
         batch_standard_map: dict[int, int] | None = None,
-        standard_item_gender_map: dict[int, dict[str, str]] | None = None
+        standard_item_gender_map: dict[int, dict[str, set[str]]] | None = None
 ) -> list[VadminSportScore]:
     if not rows or not batch_standard_map or not standard_item_gender_map:
         return rows
@@ -379,8 +381,9 @@ def _filter_rows_by_standard_gender(
         if not standard_id:
             filtered.append(row)
             continue
-        item_gender = standard_item_gender_map.get(standard_id, {}).get(str(row.item_code or '').strip())
-        if not item_gender or item_gender == 'all' or item_gender == gender:
+        item_code = _normalize_entry_item_code(row.item_code)
+        item_genders = standard_item_gender_map.get(standard_id, {}).get(item_code)
+        if not item_genders or 'all' in item_genders or gender in item_genders:
             filtered.append(row)
     return filtered
 
@@ -389,14 +392,14 @@ def _student_composite_score(
         rows: list[VadminSportScore],
         batch_standard_map: dict[int, int] | None = None,
         standard_item_count_map: dict[int, dict[str, int]] | None = None,
-        standard_item_gender_map: dict[int, dict[str, str]] | None = None
+        standard_item_gender_map: dict[int, dict[str, set[str]]] | None = None
 ) -> float:
     if not rows:
         return 0.0
     rows = _filter_rows_by_standard_gender(rows, batch_standard_map, standard_item_gender_map)
     if not rows:
         return 0.0
-    item_map = {r.item_code: r for r in rows if r.item_code}
+    item_map = {_normalize_entry_item_code(r.item_code): r for r in rows if r.item_code}
     total_score = sum(to_float(r.score_value) for r in item_map.values())
     denominator = len(item_map) or 1
     if batch_standard_map and standard_item_count_map:
@@ -412,7 +415,7 @@ def _build_scope_avg_compare_v2(
         auth: Auth,
         batch_standard_map: dict[int, int] | None = None,
         standard_item_count_map: dict[int, dict[str, int]] | None = None,
-        standard_item_gender_map: dict[int, dict[str, str]] | None = None
+        standard_item_gender_map: dict[int, dict[str, set[str]]] | None = None
 ) -> dict[str, Any]:
     mode = _scope_mode(auth)
     grouped = _latest_scope_rows(rows, mode)
@@ -474,12 +477,17 @@ def _normalize_gender(gender: str | None) -> str:
         return 'female'
     return 'all'
 
-
 def _normalize_gender_strict(gender: str | None) -> str:
     text = str(gender or '').strip().lower()
-    if text in {'male', 'm', '1', '男', 'ç”·'}:
+    if not text:
+        return 'all'
+    if text in {'male', 'm', '1'}:
         return 'male'
-    if text in {'female', 'f', '0', '2', '女', 'å¥³'}:
+    if text in {'female', 'f', '0', '2'}:
+        return 'female'
+    if ('male' in text) or ('男' in text):
+        return 'male'
+    if ('female' in text) or ('女' in text):
         return 'female'
     return 'all'
 
@@ -491,6 +499,7 @@ def _allows_negative_raw_score(item_code: str | None = None, item_name: str | No
 
 def _normalize_entry_item_code(item_code: Any) -> str:
     return str(item_code or '').strip().lower()
+
 
 
 def _calc_bmi(height: float | None, weight: float | None) -> float | None:
@@ -693,7 +702,7 @@ async def get_overview(
     trend_group = group_scores_by_batch(trend_rows)
     batch_standard_map = {b.id: b.standard_id for b in trend_batches if getattr(b, 'standard_id', None)}
     standard_item_count_map: dict[int, dict[str, int]] = {}
-    standard_item_gender_map: dict[int, dict[str, str]] = {}
+    standard_item_gender_map: dict[int, dict[str, set[str]]] = {}
     if batch_standard_map:
         standard_items = (await auth.db.scalars(select(VadminSportStandardItem).where(
             VadminSportStandardItem.is_delete == false(),
@@ -917,7 +926,7 @@ async def get_student_analysis(
         return SuccessResponse(_empty_student())
     batch_standard_map = {b.id: b.standard_id for b in sorted_batches if getattr(b, 'standard_id', None)}
     standard_item_count_map: dict[int, dict[str, int]] = {}
-    standard_item_gender_map: dict[int, dict[str, str]] = {}
+    standard_item_gender_map: dict[int, dict[str, set[str]]] = {}
     if batch_standard_map:
         standard_items = (await auth.db.scalars(select(VadminSportStandardItem).where(
             VadminSportStandardItem.is_delete == false(),
@@ -974,10 +983,10 @@ async def get_student_analysis(
         'full_items': '、'.join(full_items_list) if full_items_list else '-'
     }
 
-    item_codes = sorted({r.item_code for r in rows})
+    item_codes = sorted({_normalize_entry_item_code(r.item_code) for r in rows if _normalize_entry_item_code(r.item_code)})
     item_name_map: dict[str, str] = {}
     for row in rows:
-        item_name_map.setdefault(row.item_code, row.item_name)
+        item_name_map.setdefault(_normalize_entry_item_code(row.item_code), row.item_name)
 
     # 多维雷达指标：来源于“最新批次对应标准”的标准项（按 sort 排序）
     standard_item_all = (await auth.db.scalars(
@@ -993,9 +1002,10 @@ async def get_student_analysis(
         g = _normalize_gender_strict(it.gender)
         if g not in ('all', student_gender):
             continue
-        if it.item_code in seen_item_codes:
+        item_code = _normalize_entry_item_code(it.item_code)
+        if not item_code or item_code in seen_item_codes:
             continue
-        seen_item_codes.add(it.item_code)
+        seen_item_codes.add(item_code)
         standard_item_rows.append(it)
     radar_item_names = [it.item_name for it in standard_item_rows if it.item_name]
     if not radar_item_names:
@@ -1003,12 +1013,12 @@ async def get_student_analysis(
 
     latest_item_point_map: dict[str, float] = {}
     for r in latest_rows:
-        latest_item_point_map[r.item_code] = round2(to_float(r.score_value))
+        latest_item_point_map[_normalize_entry_item_code(r.item_code)] = round2(to_float(r.score_value))
 
     radar_values = []
     radar_max = []
     for it in standard_item_rows:
-        val = latest_item_point_map.get(it.item_code, 0.0)
+        val = latest_item_point_map.get(_normalize_entry_item_code(it.item_code), 0.0)
         radar_values.append(val)
         max_v = round2(to_float(it.max_score))
         radar_max.append(max_v if max_v > 0 else 100.0)
@@ -1029,7 +1039,7 @@ async def get_student_analysis(
                     by_batch.get(batch.id, []),
                     batch_standard_map,
                     standard_item_gender_map
-                ) if r.item_code == code
+                ) if _normalize_entry_item_code(r.item_code) == code
             ]
             values.append(_rows_item_avg_score(b_rows, code))
         item_score_series.append({'name': item_name_map.get(code, code), 'values': values})
@@ -1044,7 +1054,7 @@ async def get_student_analysis(
 
     detail_items = [
         {
-            'item_code': it.item_code,
+            'item_code': _normalize_entry_item_code(it.item_code),
             'item_name': it.item_name
         }
         for it in standard_item_rows
@@ -1065,7 +1075,7 @@ async def get_student_analysis(
             batch_standard_map,
             standard_item_gender_map
         )
-        item_map = {r.item_code: r for r in b_rows}
+        item_map = {_normalize_entry_item_code(r.item_code): r for r in b_rows}
         comment = next((r.teacher_comment for r in b_rows if r.teacher_comment), '')
         detail_row = {
             'batch_id': batch.id,
@@ -1080,7 +1090,7 @@ async def get_student_analysis(
         }
         detail_item_values = []
         for item in detail_items:
-            row = item_map.get(item['item_code'])
+            row = item_map.get(_normalize_entry_item_code(item['item_code']))
             detail_item_values.append({
                 'item_code': item['item_code'],
                 'item_name': item['item_name'],
