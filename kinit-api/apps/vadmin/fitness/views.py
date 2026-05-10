@@ -489,6 +489,22 @@ def _allows_negative_raw_score(item_code: str | None = None, item_name: str | No
     return (item_code or '').lower() == 'sit' or '坐位体前屈' in text
 
 
+def _normalize_entry_item_code(item_code: Any) -> str:
+    return str(item_code or '').strip().lower()
+
+
+def _calc_bmi(height: float | None, weight: float | None) -> float | None:
+    if height is None or weight is None:
+        return None
+    if height <= 0:
+        return None
+    if height > 10:
+        height = height / 100
+    if height <= 0:
+        return None
+    return round2(weight / (height * height))
+
+
 def _parse_raw_score(raw: Any, item_code: str | None = None, item_name: str | None = None) -> float | None:
     parsed = RuleEngine.parse_time_to_seconds(raw)
     if parsed is not None and parsed < 0 and not _allows_negative_raw_score(item_code, item_name):
@@ -543,8 +559,17 @@ def _calc_by_rule(
         raw_score: float | None,
         rule: VadminSportStandardItem | None,
         conflict_policy: str,
-        grade_name: str = ''
+        grade_name: str = '',
+        item_code: str | None = None
 ) -> dict[str, Any]:
+    normalized_item_code = (str(item_code or '').strip().lower())
+    if normalized_item_code in {'height', 'weight'}:
+        return {
+            'score_value': 100.0,
+            'is_pass': True,
+            'is_excellent': True,
+            'is_full': True
+        }
     if raw_score is None or not rule:
         return {}
 
@@ -1615,7 +1640,7 @@ async def upsert_scores(
     if not payload.get('batch_id'):
         return ErrorResponse('请选择批次')
     batch_id = int(payload.get('batch_id'))
-    scores = payload.get('scores') or []
+    scores = [item for item in (payload.get('scores') or []) if isinstance(item, dict)]
     if scores and payload.get('validate_import'):
         _, scores, import_errors = await BatchImportService.validate_score_rows(auth.db, auth, 'fitness', batch_id, scores)
         if import_errors:
@@ -1640,29 +1665,128 @@ async def upsert_scores(
     standard_items = BatchImportService.normalize_standard_items('fitness', batch.standard_id, standard_items)
     item_rule_map: dict[str, list[VadminSportStandardItem]] = {}
     for rule in standard_items:
-        item_rule_map.setdefault(rule.item_code, []).append(rule)
+        item_rule_map.setdefault(_normalize_entry_item_code(rule.item_code), []).append(rule)
 
     count = 0
 
-    student_nos = [item.get('student_no') for item in scores if item.get('student_no')]
+    student_nos = [str(item.get('student_no')).strip() for item in scores if item.get('student_no')]
     if student_nos:
         students = (await auth.db.scalars(select(VadminPefStudent).where(VadminPefStudent.student_no.in_(student_nos)))).all()
         student_map = {s.student_no: s for s in students}
     else:
         student_map = {}
 
+    submitted_hw: dict[str, dict[str, float]] = {}
+    student_meta: dict[str, dict[str, Any]] = {}
+    submitted_bmi_students: set[str] = set()
+
     for item in scores:
+        raw_student_no = item.get('student_no')
+        if not raw_student_no:
+            continue
+        student_no = str(raw_student_no).strip()
+        raw_scores = item.get('raw_scores')
+        if isinstance(raw_scores, dict):
+            hw_height = to_float(raw_scores.get('height'))
+            hw_weight = to_float(raw_scores.get('weight'))
+            if hw_height is not None and hw_height > 0:
+                submitted_hw.setdefault(student_no, {})['height'] = hw_height
+            if hw_weight is not None and hw_weight > 0:
+                submitted_hw.setdefault(student_no, {})['weight'] = hw_weight
+        item_code = _normalize_entry_item_code(item.get('item_code'))
+
+        meta = student_meta.setdefault(student_no, {})
+        if item.get('student_name'):
+            meta['student_name'] = item.get('student_name')
+        if item.get('gender'):
+            meta['gender'] = item.get('gender')
+        if item.get('mobile'):
+            meta['mobile'] = item.get('mobile')
+        if item.get('school_name'):
+            meta['school_name'] = item.get('school_name')
+        if item.get('grade_name'):
+            meta['grade_name'] = item.get('grade_name')
+        if item.get('class_name'):
+            meta['class_name'] = item.get('class_name')
+
+        if item_code in {'height', 'weight'}:
+            parsed = _parse_raw_score(item.get('raw_score'), item_code)
+            if parsed is not None and parsed > 0:
+                submitted_hw.setdefault(student_no, {})[item_code] = parsed
+        if item_code == 'bmi':
+            submitted_bmi_students.add(student_no)
+
+    existing_hw: dict[str, dict[str, float]] = {}
+    existing_bmi_map: dict[str, VadminSportScore] = {}
+    if student_nos:
+        existing_rows = (await auth.db.scalars(select(VadminSportScore).where(
+            VadminSportScore.is_delete == false(),
+            VadminSportScore.biz_type == 'fitness',
+            VadminSportScore.batch_id == batch_id,
+            VadminSportScore.student_no.in_(student_nos),
+            VadminSportScore.item_code.in_(['height', 'weight', 'bmi'])
+        ))).all()
+        for row in existing_rows:
+            student_no = row.student_no
+            if not student_no:
+                continue
+            code = _normalize_entry_item_code(row.item_code)
+            if code in {'height', 'weight'}:
+                existing_hw.setdefault(student_no, {})[code] = to_float(row.raw_score)
+            elif code == 'bmi':
+                existing_bmi_map.setdefault(student_no, row)
+
+            meta = student_meta.setdefault(student_no, {})
+            if row.student_name and not meta.get('student_name'):
+                meta['student_name'] = row.student_name
+            if row.gender and not meta.get('gender'):
+                meta['gender'] = row.gender
+            if row.mobile and not meta.get('mobile'):
+                meta['mobile'] = row.mobile
+            if row.school_name and not meta.get('school_name'):
+                meta['school_name'] = row.school_name
+            if row.grade_name and not meta.get('grade_name'):
+                meta['grade_name'] = row.grade_name
+            if row.class_name and not meta.get('class_name'):
+                meta['class_name'] = row.class_name
+
+    merged_hw = {}
+    for student_no in set(existing_hw.keys()) | set(submitted_hw.keys()):
+        merged_hw[student_no] = {
+            **existing_hw.get(student_no, {}),
+            **submitted_hw.get(student_no, {})
+        }
+
+    bmi_rules = item_rule_map.get('bmi', [])
+
+    for item in scores:
+        raw_student_no = item.get('student_no')
+        student_no = str(raw_student_no).strip() if raw_student_no else ''
         if not _in_scope(auth, item.get('school_name'), item.get('class_name')):
             continue
 
-        item_rules = item_rule_map.get(item.get('item_code') or '', [])
+        item_code = _normalize_entry_item_code(item.get('item_code'))
+        item_rules = item_rule_map.get(item_code, [])
         selected_rule = _select_rule(item_rules, item.get('gender'))
-        raw_score_parsed = _parse_raw_score(
-            item.get('raw_score'),
-            item.get('item_code'),
-            selected_rule.item_name if selected_rule else item.get('item_name')
+        raw_score_raw = item.get('raw_score')
+        if item_code == 'bmi' and (raw_score_raw is None or str(raw_score_raw).strip() == ''):
+            hw = merged_hw.get(student_no, {})
+            raw_score_parsed = _calc_bmi(hw.get('height'), hw.get('weight'))
+            if item_code == 'bmi' and (raw_score_raw is None or str(raw_score_raw).strip() == '') and raw_score_parsed is None:
+                continue
+        else:
+            raw_score_parsed = _parse_raw_score(
+                raw_score_raw,
+                item.get('item_code'),
+                selected_rule.item_name if selected_rule else item.get('item_name')
+            )
+        calc_result = _calc_by_rule(
+            raw_score_parsed,
+            selected_rule,
+            conflict_policy,
+            item.get('grade_name', ''),
+            item_code
         )
-        calc_result = _calc_by_rule(raw_score_parsed, selected_rule, conflict_policy, item.get('grade_name', ''))
 
         student = student_map.get(item.get('student_no'))
         mobile = student.phone if student else item.get('mobile')
@@ -1721,6 +1845,59 @@ async def upsert_scores(
                 test_date=item.get('test_date')
             ))
         count += 1
+
+    for student_no in set(student_nos):
+        if student_no in submitted_bmi_students:
+            continue
+        hw = merged_hw.get(student_no, {})
+        bmi_raw = _calc_bmi(hw.get('height'), hw.get('weight'))
+        if bmi_raw is None:
+            continue
+
+        selected_rule = _select_rule(bmi_rules, student_meta.get(student_no, {}).get('gender'))
+        calc_result = _calc_by_rule(
+            bmi_raw,
+            selected_rule,
+            conflict_policy,
+            student_meta.get(student_no, {}).get('grade_name', ''),
+            'bmi'
+        )
+        score_value = calc_result.get('score_value')
+        is_pass = calc_result.get('is_pass')
+        is_excellent = calc_result.get('is_excellent')
+        is_full = calc_result.get('is_full')
+        item_name = selected_rule.item_name if selected_rule else 'BMI'
+        meta = student_meta.get(student_no, {})
+        existing_row = existing_bmi_map.get(student_no)
+        if existing_row:
+            existing_row.raw_score = bmi_raw
+            existing_row.score_value = score_value
+            existing_row.is_pass = is_pass
+            existing_row.is_excellent = is_excellent
+            existing_row.is_full = is_full
+            count += 1
+        else:
+            if not (meta.get('student_name') and meta.get('school_name') and meta.get('grade_name') and meta.get('class_name')):
+                continue
+            auth.db.add(VadminSportScore(
+                biz_type='fitness',
+                batch_id=batch_id,
+                student_no=student_no,
+                student_name=meta.get('student_name'),
+                gender=meta.get('gender'),
+                mobile=meta.get('mobile'),
+                school_name=meta.get('school_name'),
+                grade_name=meta.get('grade_name'),
+                class_name=meta.get('class_name'),
+                item_code='bmi',
+                item_name=item_name,
+                raw_score=bmi_raw,
+                score_value=score_value,
+                is_pass=is_pass,
+                is_excellent=is_excellent,
+                is_full=is_full
+            ))
+            count += 1
     await auth.db.flush()
     return SuccessResponse({'upsert_count': count})
 

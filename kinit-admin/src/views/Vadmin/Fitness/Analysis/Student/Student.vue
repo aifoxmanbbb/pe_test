@@ -147,10 +147,19 @@ const heroStats = computed(() => [
 ])
 
 const comprehensiveScore = computed(() => {
+  const latestCompositeScore = stats.value?.latest_composite_score
+  if (latestCompositeScore !== undefined && latestCompositeScore !== null && !Number.isNaN(Number(latestCompositeScore))) {
+    return Number(Number(latestCompositeScore).toFixed(2))
+  }
+
   if (!detailList.value.length) return 0
-  const row = detailList.value[0]
-  const values = [row.bmi_point, row.lung_point, row.sprint_point, row.sit_point, row.rope_point].map((v) => Number(v) || 0)
-  return Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(2))
+  const latest = detailList.value[0]
+  const items = Array.isArray(latest.items) ? latest.items : []
+  const scoreList = items
+    .map((i: any) => Number(i?.score_value || 0))
+    .filter((v: number) => !Number.isNaN(v))
+  if (!scoreList.length) return 0
+  return Number((scoreList.reduce((a, b) => a + b, 0) / scoreList.length).toFixed(2))
 })
 const comprehensiveTotal = computed(() => {
   const maxList = (radarOptions.radar?.indicator || []).map((i: any) => Number(i?.max) || 0).filter((n: number) => n > 0)

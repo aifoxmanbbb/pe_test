@@ -12,6 +12,7 @@ from apps.vadmin.auth.models import VadminMenu, VadminRole, VadminUser
 from apps.vadmin.auth.utils.current import FullAdminAuth, OpenAuth, AllUserAuth
 from apps.vadmin.auth.utils.validation.auth import Auth
 from application import settings
+from typing import Any
 from core.validator import vali_id_card
 from utils.excel.import_manage import ImportManage
 from utils.excel.write_xlsx import WriteXlsx
@@ -675,6 +676,22 @@ def _parse_entry_raw_score(raw, item_code: str | None = None) -> float | None:
     return parsed
 
 
+def _normalize_entry_item_code(item_code: Any) -> str:
+    return str(item_code or '').strip().lower()
+
+
+def _calc_bmi(height: float | None, weight: float | None) -> float | None:
+    if height is None or weight is None:
+        return None
+    if height <= 0:
+        return None
+    if height > 10:
+        height = height / 100
+    if height <= 0:
+        return None
+    return round2(weight / (height * height))
+
+
 def _select_entry_rule(item_rules: list, gender: str | None):
     if not item_rules:
         return None
@@ -688,7 +705,21 @@ def _select_entry_rule(item_rules: list, gender: str | None):
     return None
 
 
-def _calc_entry_score(raw_score: float | None, rule, conflict_policy: str, grade_name: str) -> dict:
+def _calc_entry_score(
+        raw_score: float | None,
+        rule,
+        conflict_policy: str,
+        grade_name: str,
+        item_code: str | None = None
+) -> dict:
+    normalized_item_code = (str(item_code or '').strip().lower())
+    if normalized_item_code in {'height', 'weight'}:
+        return {
+            'score_value': 100.0,
+            'is_pass': True,
+            'is_excellent': True,
+            'is_full': True
+        }
     if raw_score is None or not rule:
         return {}
     mode = str(getattr(rule, 'calc_mode', None) or 'segment').strip().lower()
@@ -1570,28 +1601,67 @@ async def submit_student_self_entry(payload: dict = Body(...), auth: Auth = Depe
     item_rule_map: dict[str, list] = {}
     for item in standard_items:
         if _item_matches_student_gender(item, ctx["student"].gender):
-            item_rule_map.setdefault(item.item_code, []).append(item)
+            item_rule_map.setdefault(_normalize_entry_item_code(item.item_code), []).append(item)
 
     scores = payload.get("scores") or []
     if not isinstance(scores, list) or not scores:
         return ErrorResponse("请填写至少一项成绩")
 
     student = ctx["student"]
+    submitted_hw: dict[str, float] = {}
+    submitted_bmi_students: set[str] = set()
+    existing_hw: dict[str, float] = {}
+    existing_bmi_row: VadminSportScore | None = None
+
+    existing_rows = (await auth.db.scalars(select(VadminSportScore).where(
+        VadminSportScore.is_delete == false(),
+        VadminSportScore.biz_type == batch.biz_type,
+        VadminSportScore.batch_id == batch.id,
+        VadminSportScore.student_no == student.student_no,
+        VadminSportScore.item_code.in_(['height', 'weight', 'bmi'])
+    ))).all()
+    for row in existing_rows:
+        code = _normalize_entry_item_code(row.item_code)
+        if code in {'height', 'weight'}:
+            existing_hw[code] = to_float(row.raw_score)
+        elif code == 'bmi':
+            existing_bmi_row = row
+
     count = 0
     for item in scores:
-        item_code = str(item.get("item_code") or "").strip()
+        item_code = _normalize_entry_item_code(item.get("item_code"))
         if not item_code or item_code not in item_rule_map:
             return ErrorResponse("存在不适用于当前学生的项目")
         raw_text = str(item.get("raw_score") or "").strip()
-        if not raw_text:
+        raw_score = None
+        if raw_text:
+            raw_score = _parse_entry_raw_score(raw_text, item_code)
+            if raw_score is None:
+                return ErrorResponse(f"成绩格式不正确：{raw_text}")
+        if item_code in {'height', 'weight'}:
+            if raw_score is not None and raw_score > 0:
+                submitted_hw[item_code] = raw_score
+        if item_code == 'bmi':
+            submitted_bmi_students.add(student.student_no)
+        if item_code == 'bmi' and raw_text == '':
+            merged_hw = {
+                **existing_hw,
+                **submitted_hw
+            }
+            raw_score = _calc_bmi(merged_hw.get('height'), merged_hw.get('weight'))
+            if raw_score is None:
+                continue
+        if raw_text == '':
             continue
-        raw_score = _parse_entry_raw_score(raw_text, item_code)
-        if raw_score is None:
-            return ErrorResponse(f"成绩格式不正确：{raw_text}")
-
         item_rules = item_rule_map.get(item_code) or []
         selected_rule = _select_entry_rule(item_rules, student.gender)
-        calc_result = _calc_entry_score(raw_score, selected_rule, conflict_policy, ctx["grade_name"])
+        calc_result = _calc_entry_score(
+            raw_score,
+            selected_rule,
+            conflict_policy,
+            ctx["grade_name"],
+            item_code
+        )
         item_name = getattr(selected_rule, 'item_name', None) or item.get("item_name") or item_code
         score_value = calc_result.get('score_value') if 'score_value' in calc_result else None
 
@@ -1630,6 +1700,49 @@ async def submit_student_self_entry(payload: dict = Body(...), auth: Auth = Depe
                 is_full=calc_result.get('is_full')
             ))
         count += 1
+    if 'bmi' in item_rule_map and student.student_no not in submitted_bmi_students:
+        merged_hw = {
+            **existing_hw,
+            **submitted_hw
+        }
+        bmi_raw = _calc_bmi(merged_hw.get('height'), merged_hw.get('weight'))
+        if bmi_raw is not None:
+            bmi_rules = item_rule_map.get('bmi') or []
+            selected_rule = _select_entry_rule(bmi_rules, student.gender)
+            calc_result = _calc_entry_score(
+                bmi_raw,
+                selected_rule,
+                conflict_policy,
+                ctx["grade_name"],
+                'bmi'
+            )
+            if existing_bmi_row:
+                existing_bmi_row.raw_score = bmi_raw
+                existing_bmi_row.score_value = calc_result.get('score_value')
+                existing_bmi_row.is_pass = calc_result.get('is_pass')
+                existing_bmi_row.is_excellent = calc_result.get('is_excellent')
+                existing_bmi_row.is_full = calc_result.get('is_full')
+            else:
+                item_name = getattr(selected_rule, 'item_name', None) if selected_rule else 'BMI'
+                auth.db.add(VadminSportScore(
+                    biz_type=batch.biz_type,
+                    batch_id=batch.id,
+                    student_no=student.student_no,
+                    student_name=student.name,
+                    gender=student.gender,
+                    mobile=student.phone,
+                    school_name=ctx["school_name"],
+                    grade_name=ctx["grade_name"],
+                    class_name=ctx["class_name"],
+                    item_code='bmi',
+                    item_name=item_name,
+                    raw_score=bmi_raw,
+                    score_value=calc_result.get('score_value'),
+                    is_pass=calc_result.get('is_pass'),
+                    is_excellent=calc_result.get('is_excellent'),
+                    is_full=calc_result.get('is_full')
+                ))
+            count += 1
     if count == 0:
         return ErrorResponse("请填写至少一项成绩")
     await auth.db.flush()
@@ -1641,6 +1754,7 @@ async def get_student_list(
     page: int = Query(1),
     limit: int = Query(10),
     name: str = Query(None),
+    student_no: str = Query(None),
     school_id: int = Query(None),
     school_name: str = Query(None),
     grade_id: int = Query(None),
@@ -1660,6 +1774,8 @@ async def get_student_list(
     
     if name:
         sql = sql.where(VadminPefStudent.name.like(f"%{name}%"))
+    if student_no:
+        sql = sql.where(VadminPefStudent.student_no.like(f"%{student_no}%"))
     if school_id:
         sql = sql.where(VadminPefStudent.school_id == school_id)
     if school_name:

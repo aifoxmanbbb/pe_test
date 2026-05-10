@@ -116,6 +116,16 @@ const searchSchema = computed<FormSchema[]>(() => {
       label: '学校',
       component: 'Select',
       componentProps: { options: schoolOptions.value }
+    },
+    {
+      field: 'student_no',
+      label: '学号',
+      component: 'Input'
+    },
+    {
+      field: 'name',
+      label: '姓名',
+      component: 'Input'
     }
   ]
 
@@ -158,8 +168,12 @@ const handleSearch = async (data: any) => {
 
 const loadStudents = async () => {
   loading.value = true
+  const studentNo = (searchParams.value.student_no || '').trim()
+  const studentName = (searchParams.value.name || '').trim()
   const res = await getStudentListApi({ 
     school_name: searchParams.value.school_name,
+    student_no: studentNo || undefined,
+    name: studentName || undefined,
     limit: 100 
   }).catch(() => null)
   
