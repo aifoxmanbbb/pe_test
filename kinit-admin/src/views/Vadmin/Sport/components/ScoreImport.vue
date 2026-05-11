@@ -31,6 +31,10 @@ const props = defineProps({
     type: String,
     required: true
   },
+  templateStyle: {
+    type: String,
+    default: 'compact'
+  },
   downloadTemplateApi: {
     type: Function as PropType<(params?: Record<string, any>) => DownloadTemplateResult>,
     required: true
@@ -110,7 +114,10 @@ const downloadTemplate = async () => {
     return
   }
   ElMessage.info('正在下载模板')
-  const res = await props.downloadTemplateApi({ batch_id: Number(props.batchId) })
+  const res = await props.downloadTemplateApi({
+    batch_id: Number(props.batchId),
+    template_style: props.templateStyle
+  })
   const blob = res?.data
   if (!blob) return
   const url = URL.createObjectURL(blob)

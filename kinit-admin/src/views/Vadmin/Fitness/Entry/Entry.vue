@@ -333,6 +333,7 @@ onMounted(async () => {
         :batch-id="searchParams.batch_id"
         :batch-label="currentBatchOption?.label || ''"
         :download-template-api="downloadFitnessScoreTemplateApi"
+        template-style="wide"
         :import-scores-api="importFitnessScoresApi"
         :confirm-scores-api="confirmFitnessScoresApi"
         @success="handleImportSuccess"

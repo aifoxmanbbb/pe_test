@@ -1,9 +1,10 @@
-#!/usr/bin/python
+﻿#!/usr/bin/python
 # -*- coding: utf-8 -*-
 
 from openpyxl import load_workbook
 from typing import List, Dict, Any
 import io
+import re
 from types import SimpleNamespace
 from sqlalchemy import select, false
 from xlsxwriter.utility import xl_col_to_name
@@ -26,13 +27,47 @@ class BatchImportService:
         ("学校", "school_name"),
         ("年级", "grade_name"),
         ("班级", "class_name"),
-        ("项目名称", "item_name"),
+        ("项目", "item_name"),
         ("成绩", "raw_score")
     ]
     SCORE_REQUIRED_LABELS = {label for label, _ in SCORE_HEADERS}
-    UNLIMITED_VALUES = {'', '*', 'all', '全部', '不限', '不区分', '全校', '全部学校', '全年级', '全部年级', '全部班级'}
+    SCORE_WIDE_HEADERS = [
+        ("\u8eab\u4efd\u8bc1", "id_card"),
+        ("\u5b66\u751f\u59d3\u540d", "student_name"),
+        ("\u6027\u522b", "gender"),
+        ("\u5b66\u6821", "school_name"),
+        ("\u5e74\u7ea7", "grade_name"),
+        ("\u73ed\u7ea7", "class_name"),
+        ("\u8eab\u9ad8", "height"),
+        ("\u4f53\u91cd", "weight"),
+        ("BMI", "bmi"),
+        ("\u80ba\u6d3b\u91cf", "lung"),
+        ("50\u7c73\u8dd1", "run_50"),
+        ("\u5750\u4f4d\u4f53\u524d\u5c48", "sit"),
+        ("\u7acb\u5b9a\u8df3\u8fdc", "jump"),
+        ("\u5f15\u4f53\u5411\u4e0a", "pull_up"),
+        ("1\u5206\u949f\u4ef0\u5367\u8d77\u5750", "situp"),
+        ("1000\u7c73\u8dd1", "run_1000"),
+        ("800\u7c73\u8dd1", "run_800"),
+        ("\u8001\u5e08\u8bc4\u8bed", "teacher_comment")
+    ]
+    SCORE_WIDE_ITEM_HEADERS = [
+        ("\u8eab\u9ad8", "height"),
+        ("\u4f53\u91cd", "weight"),
+        ("BMI", "bmi"),
+        ("\u80ba\u6d3b\u91cf", "lung"),
+        ("50\u7c73\u8dd1", "run_50"),
+        ("\u5750\u4f4d\u4f53\u524d\u5c48", "sit"),
+        ("\u7acb\u5b9a\u8df3\u8fdc", "jump"),
+        ("\u5f15\u4f53\u5411\u4e0a", "pull_up"),
+        ("1\u5206\u949f\u4ef0\u5367\u8d77\u5750", "situp"),
+        ("1000\u7c73\u8dd1", "run_1000"),
+        ("800\u7c73\u8dd1", "run_800")
+    ]
+    SCORE_WIDE_BASE_REQUIRED_LABELS = {"\u8eab\u4efd\u8bc1", "\u5b66\u751f\u59d3\u540d", "\u6027\u522b", "\u5b66\u6821", "\u5e74\u7ea7", "\u73ed\u7ea7"}
+    UNLIMITED_VALUES = {'', '*', 'all', '不限', '全局', '全部'}
     FITNESS_REMOVED_ITEM_CODES = {'run_50x8'}
-    FITNESS_REMOVED_ITEM_NAMES = {'50米×8往返跑', '50米x8往返跑', '50x8往返跑'}
+    FITNESS_REMOVED_ITEM_NAMES = {'50米x8', '50米-8', '50x8'}
     FITNESS_VIRTUAL_ITEMS = [
         {"item_code": "height", "item_name": "身高", "gender": "all", "calc_mode": "record", "sort": -2},
         {"item_code": "weight", "item_name": "体重", "gender": "all", "calc_mode": "record", "sort": -1}
@@ -53,15 +88,81 @@ class BatchImportService:
         return text.replace('*', '').replace(' ', '').replace('\u3000', '')
 
     @staticmethod
+    def _normalize_item_key(value) -> str:
+        text = BatchImportService._clean_cell(value)
+        if not text:
+            return ''
+        text = text.lower()
+        text = re.sub(r'[\\s_*\u3000\\(\\)\\-\\u00b7\\u2022,，。/:;!?%]', '', text)
+        text = text.replace('\u4e00\u5206\u949f', '1')
+        return text
+
+    @staticmethod
+    def _build_item_aliases(item_name: str, item_code: str | None = None) -> list[str]:
+        aliases: set[str] = set()
+        norm_name = BatchImportService._normalize_item_key(item_name)
+        if norm_name:
+            aliases.add(norm_name)
+        code = BatchImportService._normalize_item_key(item_code) if item_code else ''
+        if code:
+            aliases.add(code)
+            if code == 'height':
+                aliases.update({'height', '身高'})
+            elif code == 'weight':
+                aliases.update({'weight', '体重'})
+            elif code == 'bmi':
+                aliases.add('bmi')
+            elif code in {'lung', 'vitalcapacity', 'pulmonary'}:
+                aliases.update({'lung', 'pulmonary', '肺活量'})
+            elif code in {'run50', 'run50m', '50'}:
+                aliases.update({'50', '50米', '50米跑', 'run50'})
+            elif code in {'run1000', 'run1000m', '1000'}:
+                aliases.update({'1000', '1000米', '1000米跑', 'run1000'})
+            elif code in {'run800', 'run800m', '800'}:
+                aliases.update({'800', '800米', '800米跑', 'run800'})
+            elif code in {'sit', 'sitandreach'}:
+                aliases.update({'sit', 'sitandreach', '坐位体前屈', '坐位体前弯'})
+            elif code in {'jump', 'standinglongjump'}:
+                aliases.update({'jump', '立定跳远'})
+            elif code in {'pullup', 'pullupcount'}:
+                aliases.update({'pullup', '引体向上'})
+            elif code in {'situp', 'situpcount'}:
+                aliases.update({'situp', '仰卧起坐', '1分钟仰卧起坐', '一分钟仰卧起坐'})
+
+        if norm_name:
+            if '50' in norm_name or '50米' in item_name:
+                aliases.update({'50', '50米', '50米跑', 'run50'})
+            if '1000' in norm_name or '1000米' in item_name:
+                aliases.update({'1000', '1000米', '1000米跑', 'run1000'})
+            if '800' in norm_name or '800米' in item_name:
+                aliases.update({'800', '800米', '800米跑', 'run800'})
+            if '坐位体前屈' in item_name:
+                aliases.update({'sitandreach', '坐位体前屈', '坐位体前弯'})
+            if '坐位体前弯' in item_name:
+                aliases.update({'sitandreach', '坐位体前屈', '坐位体前弯'})
+            if '立定跳远' in item_name:
+                aliases.update({'jump', '立定跳远'})
+            if '引体向上' in item_name:
+                aliases.update({'pullup', '引体向上'})
+            if '仰卧起坐' in item_name:
+                aliases.update({'situp', '仰卧起坐', '1分钟仰卧起坐', '一分钟仰卧起坐'})
+
+        return list({BatchImportService._normalize_item_key(alias) for alias in aliases})
+
+    @staticmethod
+    def _normalize_item_name_for_lookup(value: str) -> str:
+        return BatchImportService._normalize_item_key(value)
+
+    @staticmethod
     def _is_unlimited(value) -> bool:
         return BatchImportService._clean_cell(value).lower() in BatchImportService.UNLIMITED_VALUES
 
     @staticmethod
     def _normalize_gender(value) -> str:
         text = BatchImportService._clean_cell(value).lower()
-        if text in {'male', 'm', '1', '男', 'Ã§â€Â·'}:
+        if text in {'male', 'm', '1', '男', 'boy', 'man'}:
             return 'male'
-        if text in {'female', 'f', '0', '2', '女', 'Ã¥Â¥Â³'}:
+        if text in {'female', 'f', '0', '2', '女', 'girl', 'woman'}:
             return 'female'
         return 'all'
 
@@ -120,19 +221,25 @@ class BatchImportService:
         return sorted(normalized, key=lambda item: (getattr(item, "sort", 0) or 0, getattr(item, "id", 0) or 0))
 
     @staticmethod
-    def _score_template_headers() -> list[dict]:
+    def _score_template_headers(template_style: str = 'compact') -> list[dict]:
+        template_headers = BatchImportService.SCORE_WIDE_HEADERS if template_style == 'wide' else BatchImportService.SCORE_HEADERS
         return [
-            {"label": label, "field": field, "required": True}
-            for label, field in BatchImportService.SCORE_HEADERS
+            {
+                "label": label,
+                "field": field,
+                "required": label in BatchImportService.SCORE_WIDE_BASE_REQUIRED_LABELS if template_style == 'wide' else True
+            }
+            for label, field in template_headers
         ]
 
     @staticmethod
     def format_score_errors(errors: list[str]) -> str:
         if not errors:
             return ""
-        visible_errors = errors[:30]
-        suffix = f"；另有 {len(errors) - len(visible_errors)} 条错误" if len(errors) > len(visible_errors) else ""
-        return f"导入校验失败：{'；'.join(visible_errors)}{suffix}"
+        deduped_errors = list(dict.fromkeys(errors))
+        visible_errors = deduped_errors[:30]
+        suffix = f"，另有 {len(deduped_errors) - len(visible_errors)} 条错误未展示" if len(deduped_errors) > len(visible_errors) else ""
+        return f"共 {len(visible_errors)} 条错误：{'； '.join(visible_errors)}{suffix}"
 
     @staticmethod
     def _in_batch_scope(batch: VadminSportBatch, school_name: str, grade_name: str, class_name: str) -> bool:
@@ -193,13 +300,15 @@ class BatchImportService:
         }
 
     @staticmethod
-    def apply_score_template_validations(writer, options: dict[str, Any], max_row: int = 1000) -> None:
+    def apply_score_template_validations(writer, options: dict[str, Any], max_row: int = 1000, template_style: str = 'compact') -> None:
         if not writer or not writer.wb or not writer.sheet:
             return
         wb = writer.wb
         sheet = writer.sheet
         option_sheet = wb.add_worksheet("_score_options")
         option_sheet.hide()
+        template_headers = BatchImportService._score_template_headers(template_style)
+        field_to_col = {header["field"]: index for index, header in enumerate(template_headers)}
 
         def write_column(col: int, values: list[str]) -> str | None:
             clean_values: list[str] = []
@@ -216,22 +325,47 @@ class BatchImportService:
             col_name = xl_col_to_name(col)
             return f"='_score_options'!${col_name}$1:${col_name}${len(clean_values)}"
 
-        school_source = write_column(0, options.get("schools") or [])
-        student_no_source = write_column(2, options.get("student_nos") or [])
-        student_name_source = write_column(3, options.get("student_names") or [])
-        gender_source = write_column(4, ["男", "女"])
-        item_name_source = write_column(6, options.get("item_names") or [])
+        school_source = None
+        if template_style == 'wide':
+            id_card_source = write_column(0, options.get("student_ids") or options.get("id_cards") or [])
+            student_name_source = write_column(1, options.get("student_names") or [])
+            school_source = write_column(3, options.get("schools") or [])
+            gender_source = write_column(2, ["男", "女"])
+        else:
+            school_source = write_column(field_to_col.get("school_name", 3), options.get("schools") or [])
+            id_card_source = None
+            student_no_source = write_column(field_to_col.get("student_no", 0), options.get("student_nos") or [])
+            student_name_source = write_column(field_to_col.get("student_name", 1), options.get("student_names") or [])
+            gender_source = write_column(field_to_col.get("gender", 2), ["男", "女"])
+        item_name_source = write_column(field_to_col.get("item_name", 6), options.get("item_names") or [])
 
-        if student_no_source:
-            sheet.data_validation(1, 0, max_row, 0, {'validate': 'list', 'source': student_no_source})
-        if student_name_source:
-            sheet.data_validation(1, 1, max_row, 1, {'validate': 'list', 'source': student_name_source})
-        if gender_source:
-            sheet.data_validation(1, 2, max_row, 2, {'validate': 'list', 'source': gender_source})
+        school_col = field_to_col.get("school_name", 3)
         if school_source:
-            sheet.data_validation(1, 3, max_row, 3, {'validate': 'list', 'source': school_source})
-        if item_name_source:
-            sheet.data_validation(1, 6, max_row, 6, {'validate': 'list', 'source': item_name_source})
+            sheet.data_validation(1, school_col, max_row, school_col, {'validate': 'list', 'source': school_source})
+
+        if template_style == 'wide':
+            if id_card_source:
+                id_col = field_to_col.get("id_card", 0)
+                sheet.data_validation(1, id_col, max_row, id_col, {'validate': 'list', 'source': id_card_source})
+            sname_col = field_to_col.get("student_name", 1)
+            if student_name_source:
+                sheet.data_validation(1, sname_col, max_row, sname_col, {'validate': 'list', 'source': student_name_source})
+            g_col = field_to_col.get("gender", 2)
+            if gender_source:
+                sheet.data_validation(1, g_col, max_row, g_col, {'validate': 'list', 'source': gender_source})
+        else:
+            no_col = field_to_col.get("student_no", 0)
+            if student_no_source:
+                sheet.data_validation(1, no_col, max_row, no_col, {'validate': 'list', 'source': student_no_source})
+            sname_col = field_to_col.get("student_name", 1)
+            if student_name_source:
+                sheet.data_validation(1, sname_col, max_row, sname_col, {'validate': 'list', 'source': student_name_source})
+            g_col = field_to_col.get("gender", 2)
+            if gender_source:
+                sheet.data_validation(1, g_col, max_row, g_col, {'validate': 'list', 'source': gender_source})
+            item_col = field_to_col.get("item_name", 6)
+            if item_name_source:
+                sheet.data_validation(1, item_col, max_row, item_col, {'validate': 'list', 'source': item_name_source})
 
         grade_start_col = 10
         schools = options.get("schools") or []
@@ -274,7 +408,7 @@ class BatchImportService:
     @staticmethod
     async def _load_batch(db, auth, biz_type: str, batch_id: int | None) -> VadminSportBatch:
         if not batch_id:
-            raise ValueError("请先选择批次")
+            raise ValueError("batch_id不能为空")
         batch = await db.scalar(select(VadminSportBatch).where(
             VadminSportBatch.id == batch_id,
             VadminSportBatch.biz_type == biz_type,
@@ -286,13 +420,13 @@ class BatchImportService:
             not (BatchImportService._is_unlimited(batch.school_name) and BatchImportService._is_unlimited(batch.class_name))
             and not match_scope_by_name(auth, batch.school_name, batch.class_name)
         ):
-            raise ValueError("无权限操作该批次")
+            raise ValueError("无权访问该批次")
         return batch
 
     @staticmethod
-    async def build_score_template_config(db, auth, biz_type: str, batch_id: int | None) -> tuple[list[dict], dict[str, Any]]:
+    async def build_score_template_config(db, auth, biz_type: str, batch_id: int | None, template_style: str = 'compact') -> tuple[list[dict], dict[str, Any]]:
         batch = await BatchImportService._load_batch(db, auth, biz_type, batch_id)
-        headers = BatchImportService._score_template_headers()
+        headers = BatchImportService._score_template_headers(template_style)
         scope_rows = await BatchImportService._load_scope_rows(db, auth, batch)
         scope_options = BatchImportService._build_scope_option_maps(scope_rows)
         student_rows = (await db.execute(
@@ -324,14 +458,16 @@ class BatchImportService:
         options = {
             **scope_options,
             "student_nos": [item.student_no for item in students],
+            "student_ids": [item.id_card for item in students],
+            "id_cards": [item.id_card for item in students],
             "student_names": [item.name for item in students],
             "item_names": [item.item_name for item in standard_items]
         }
         return headers, options
 
     @staticmethod
-    async def build_score_template_headers(db, auth, biz_type: str, batch_id: int | None) -> list[dict]:
-        headers, _ = await BatchImportService.build_score_template_config(db, auth, biz_type, batch_id)
+    async def build_score_template_headers(db, auth, biz_type: str, batch_id: int | None, template_style: str = 'compact') -> list[dict]:
+        headers, _ = await BatchImportService.build_score_template_config(db, auth, biz_type, batch_id, template_style)
         return headers
 
     @staticmethod
@@ -350,7 +486,17 @@ class BatchImportService:
                 VadminPefClass.is_delete == false()
             )
         )).all()
-        student_map = {BatchImportService._clean_cell(row[0].student_no): row for row in student_rows}
+        student_map_by_no: dict[str, tuple] = {}
+        student_map_by_id: dict[str, tuple] = {}
+        for row in student_rows:
+            student = row[0]
+            student_no = BatchImportService._clean_cell(student.student_no)
+            if student_no:
+                student_map_by_no[student_no] = row
+            id_card = BatchImportService._clean_cell(student.id_card)
+            if id_card:
+                student_map_by_id[id_card] = row
+
         standard_items = (await db.scalars(select(VadminSportStandardItem).where(
             VadminSportStandardItem.standard_id == batch.standard_id,
             VadminSportStandardItem.is_delete == false()
@@ -358,7 +504,8 @@ class BatchImportService:
         standard_items = BatchImportService.normalize_standard_items(biz_type, batch.standard_id, standard_items)
         item_name_map: dict[str, list[VadminSportStandardItem]] = {}
         for item in standard_items:
-            item_name_map.setdefault(BatchImportService._clean_cell(item.item_name), []).append(item)
+            for alias in BatchImportService._build_item_aliases(item.item_name, item.item_code):
+                item_name_map.setdefault(alias, []).append(item)
 
         errors: list[str] = []
         normalized_scores: list[dict] = []
@@ -366,6 +513,7 @@ class BatchImportService:
             row_number = score.get("_row_number") or (index + 1)
             row_errors: list[str] = []
             student_no = BatchImportService._clean_cell(score.get("student_no"))
+            id_card = BatchImportService._clean_cell(score.get("id_card"))
             student_name = BatchImportService._clean_cell(score.get("student_name"))
             gender = BatchImportService._clean_cell(score.get("gender"))
             school_name = BatchImportService._clean_cell(score.get("school_name"))
@@ -375,34 +523,45 @@ class BatchImportService:
             raw_score = score.get("raw_score")
 
             if not BatchImportService._is_unlimited(batch.school_name) and school_name != batch.school_name:
-                row_errors.append(f"学校需与批次一致：{batch.school_name}")
+                row_errors.append(f"school must match batch: {batch.school_name}")
             if not BatchImportService._is_unlimited(batch.grade_name) and grade_name != batch.grade_name:
-                row_errors.append(f"年级需与批次一致：{batch.grade_name}")
+                row_errors.append(f"grade must match batch: {batch.grade_name}")
             if not BatchImportService._is_unlimited(batch.class_name) and class_name != batch.class_name:
-                row_errors.append(f"班级需与批次一致：{batch.class_name}")
+                row_errors.append(f"class must match batch: {batch.class_name}")
             if not match_scope_by_name(auth, school_name, class_name):
-                row_errors.append("无权限导入该学校/班级数据")
+                row_errors.append("no permission to import this school/class")
 
-            student_row = student_map.get(student_no)
+            student_row = student_map_by_id.get(id_card) if id_card else None
+            if not student_row and student_no:
+                student_row = student_map_by_no.get(student_no)
+            if not student_row and id_card:
+                student_row = student_map_by_no.get(id_card)
             if not student_row:
-                row_errors.append(f"学号不存在于学生档案：{student_no}")
+                if id_card and student_no:
+                    row_errors.append(f"student not found by id card/student id: {id_card}/{student_no}")
+                elif id_card:
+                    row_errors.append(f"student not found by id card: {id_card}")
+                else:
+                    row_errors.append(f"student not found by student id: {student_no}")
             else:
                 student, real_school, real_grade, real_class = student_row
                 if student.name != student_name:
-                    row_errors.append(f"姓名与学生档案不一致，应为：{student.name}")
+                    row_errors.append(f"name mismatch, expected: {student.name}")
                 if BatchImportService._normalize_gender(student.gender) != BatchImportService._normalize_gender(gender):
-                    row_errors.append("性别与学生档案不一致")
+                    row_errors.append("gender mismatch")
                 if real_school != school_name:
-                    row_errors.append(f"学校与学生档案不一致，应为：{real_school}")
+                    row_errors.append(f"school mismatch, expected: {real_school}")
                 if real_grade != grade_name:
-                    row_errors.append(f"年级与学生档案不一致，应为：{real_grade}")
+                    row_errors.append(f"grade mismatch, expected: {real_grade}")
                 if real_class != class_name:
-                    row_errors.append(f"班级与学生档案不一致，应为：{real_class}")
+                    row_errors.append(f"class mismatch, expected: {real_class}")
 
-            item_rules = item_name_map.get(item_name) or []
+            item_rules = item_name_map.get(BatchImportService._normalize_item_name_for_lookup(item_name), [])
+            if item_name and not item_rules:
+                item_rules = item_name_map.get(BatchImportService._normalize_item_key(item_name), [])
             selected_item = None
             if not item_rules:
-                row_errors.append(f"项目名称不属于当前批次标准：{item_name}")
+                row_errors.append(f"item not in current batch standard: {item_name}")
             else:
                 target_gender = BatchImportService._normalize_gender(gender)
                 selected_item = next(
@@ -413,23 +572,26 @@ class BatchImportService:
                     None
                 )
                 if not selected_item:
-                    row_errors.append("该项目不适用于该学生性别")
+                    if score.get("_template_style") == "wide":
+                        continue
+                    row_errors.append("item is not allowed for this student's gender")
 
             if BatchImportService._clean_cell(raw_score) == "":
-                row_errors.append("成绩不能为空")
+                row_errors.append("score cannot be empty")
             else:
                 parsed_raw_score = RuleEngine.parse_time_to_seconds(raw_score)
                 if parsed_raw_score is None:
-                    row_errors.append(f"成绩格式不正确：{raw_score}")
+                    row_errors.append(f"invalid score format: {raw_score}")
                 elif parsed_raw_score < 0 and not BatchImportService._allows_negative_score_item(selected_item):
-                    row_errors.append(f"成绩不能为负数：{raw_score}")
+                    row_errors.append(f"score cannot be negative: {raw_score}")
 
             if row_errors:
-                errors.append(f"第 {row_number} 行：{'；'.join(row_errors)}")
+                errors.append(f"row {row_number}: {'; '.join(row_errors)}")
                 continue
 
             normalized = dict(score)
             normalized.pop("_row_number", None)
+            normalized.pop("_template_style", None)
             if student_row:
                 student, real_school, real_grade, real_class = student_row
                 normalized.update({
@@ -447,38 +609,98 @@ class BatchImportService:
                     "item_name": selected_item.item_name
                 })
             normalized_scores.append(normalized)
+
         return batch, normalized_scores, errors
 
     @staticmethod
     def parse_score_excel(file_content: bytes) -> List[Dict[str, Any]]:
-        """
-        解析成绩导入 Excel 文件
-        结构示例：
-        学号 | 姓名 | 性别 | 学校 | 年级 | 班级 | 项目名称 | 成绩
-        """
+        """Parse score import excel (compact or wide)."""
         try:
             wb = load_workbook(filename=io.BytesIO(file_content), data_only=True)
         except Exception:
-            raise ValueError("Excel 文件解析失败，请确认上传的是 .xlsx 模板文件")
+            raise ValueError("Excel parse failed, please upload .xlsx template")
         sheet = wb.active
         scores = []
 
         rows = list(sheet.iter_rows())
         if len(rows) < 2:
-            raise ValueError("Excel 文件中没有可导入的数据")
+            raise ValueError("Excel file has no importable data")
 
         header_map: dict[str, int] = {}
         for index, cell in enumerate(rows[0]):
             label = BatchImportService._normalize_header(cell.value)
             if label:
                 header_map[label] = index
+        item_header = BatchImportService._normalize_header("项目")
+        legacy_item_header = BatchImportService._normalize_header("项目名称")
+        if item_header not in header_map and legacy_item_header in header_map:
+            header_map[item_header] = header_map[legacy_item_header]
 
-        missing_headers = [
-            label for label, _ in BatchImportService.SCORE_HEADERS
-            if BatchImportService._normalize_header(label) not in header_map
-        ]
-        if missing_headers:
-            raise ValueError(f"模板表头缺少：{'、'.join(missing_headers)}")
+        compact_ok = all(
+            BatchImportService._normalize_header(label) in header_map
+            for label in BatchImportService.SCORE_REQUIRED_LABELS
+        )
+        wide_ok = all(
+            BatchImportService._normalize_header(label) in header_map
+            for label in BatchImportService.SCORE_WIDE_BASE_REQUIRED_LABELS
+        )
+        template_style = 'compact' if compact_ok else 'wide' if wide_ok else None
+        if template_style is None:
+            raise ValueError("Template header missing required fields")
+
+        if template_style == 'wide':
+            for row_number, row in enumerate(rows[1:], start=2):
+                raw_row_values = [cell.value for cell in row]
+                if not any(BatchImportService._clean_cell(value) for value in raw_row_values):
+                    continue
+
+                base: dict[str, Any] = {}
+                row_errors: list[str] = []
+                for label, field in BatchImportService.SCORE_WIDE_HEADERS:
+                    normalized_label = BatchImportService._normalize_header(label)
+                    col_index = header_map.get(normalized_label)
+                    raw_value = row[col_index].value if col_index is not None and col_index < len(row) else None
+                    cleaned_value = BatchImportService._clean_cell(raw_value)
+                    if label in BatchImportService.SCORE_WIDE_BASE_REQUIRED_LABELS and not cleaned_value:
+                        row_errors.append(f"{label} cannot be blank")
+                    base[field] = cleaned_value
+
+                if row_errors:
+                    raise ValueError(f"row {row_number}: {'; '.join(row_errors)}")
+
+                entry_count = 0
+                for item_label, _ in BatchImportService.SCORE_WIDE_ITEM_HEADERS:
+                    candidate_labels = [item_label]
+                    if item_label == "\u5750\u4f4d\u4f53\u524d\u5c48":
+                        candidate_labels.append("\u5750\u4f4d\u4f53\u524d\u5f2f")
+                    elif item_label == "50\u7c73\u8dd1":
+                        candidate_labels.append("50\u7c73")
+                    elif item_label == "1\u5206\u949f\u4ef0\u5367\u8d77\u5750":
+                        candidate_labels.extend(["\u4ef0\u5367\u8d77\u5750", "\u4e00\u5206\u949f\u4ef0\u5367\u8d77\u5750"])
+                    item_col = None
+                    for candidate_label in candidate_labels:
+                        item_col = header_map.get(BatchImportService._normalize_header(candidate_label))
+                        if item_col is not None:
+                            break
+                    raw_value = row[item_col].value if item_col is not None and item_col < len(row) else None
+                    if BatchImportService._clean_cell(raw_value) == "":
+                        continue
+                    scores.append({
+                        **base,
+                        "item_name": item_label,
+                        "raw_score": raw_value,
+                        "_row_number": row_number,
+                        "_template_style": "wide"
+                    })
+                    entry_count += 1
+
+                if entry_count == 0:
+                    raise ValueError(f"row {row_number}: at least one score item is required")
+
+            if not scores:
+                raise ValueError("Excel file has no importable data")
+            return scores
+
         for row_number, row in enumerate(rows[1:], start=2):
             raw_row_values = [cell.value for cell in row]
             if not any(BatchImportService._clean_cell(value) for value in raw_row_values):
@@ -491,14 +713,15 @@ class BatchImportService:
                 raw_value = row[col_index].value if col_index < len(row) else None
                 cleaned_value = BatchImportService._clean_cell(raw_value)
                 if label in BatchImportService.SCORE_REQUIRED_LABELS and not cleaned_value:
-                    row_errors.append(f"{label}不能为空")
+                    row_errors.append(f"{label} cannot be blank")
                 score[field] = raw_value if field == "raw_score" else cleaned_value
             if row_errors:
-                raise ValueError(f"第 {row_number} 行：{'；'.join(row_errors)}")
+                raise ValueError(f"row {row_number}: {'; '.join(row_errors)}")
 
             score["_row_number"] = row_number
             scores.append(score)
 
         if not scores:
-            raise ValueError("Excel 文件中没有可导入的数据")
+            raise ValueError("Excel file has no importable data")
         return scores
+

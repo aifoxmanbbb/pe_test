@@ -1,4 +1,4 @@
-#!/usr/bin/python
+﻿#!/usr/bin/python
 # -*- coding: utf-8 -*-
 
 import json
@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 
 def _serialize(model_obj, schema_class):
     """
-    通用序列化工具，确保完全兼容 orjson
+    Fallback serialization via model_dump_json when orjson output is not compatible.
     """
     return json.loads(schema_class.model_validate(model_obj).model_dump_json())
 
@@ -92,7 +92,7 @@ async def _get_self_student_context(db, telephone: str | None, user_id: int | No
     )
 
     row = None
-    # 优先按 user_id 精确匹配，避免同手机号/历史脏数据匹配错学生
+    # prefer user_id first, then phone number; keep backward-compatible lookup for older records
     if user_id:
         row = (await db.execute(base_sql.where(VadminPefStudent.user_id == user_id))).first()
     if (not row) and telephone:
@@ -149,9 +149,9 @@ def _fitness_slots(rows: list[VadminSportScore]) -> tuple[dict[str, str], dict[s
     slot_keywords = {
         'bmi': ['bmi'],
         'lung': ['肺活量'],
-        'sprint': ['50', '短跑'],
+        'sprint': ['50', '50米'],
         'sit': ['坐位体前屈'],
-        'rope': ['跳绳']
+        'rope': ['引体向上']
     }
     mapped = pick_items_by_keywords(rows, slot_keywords, fallback_size=5)
     ordered: list[str] = []
@@ -243,7 +243,7 @@ def _empty_overview() -> dict[str, Any]:
         'item_avg': {'items': [], 'values': [], 'threshold': {'pass': 60, 'excellent': 80, 'full': 100}},
         'item_rate': {'items': [], 'pass_rate': [], 'excellent_rate': [], 'full_rate': []},
         'item_trend': {'batches': [], 'series': []},
-        'scope_avg_compare': {'mode': 'school', 'label_name': '学校', 'metric_name': '体测平均情况', 'labels': [], 'values': []},
+        'scope_avg_compare': {'mode': 'school', 'label_name': '学校', 'metric_name': '平均分', 'labels': [], 'values': []},
         'class_list': []
     }
 
@@ -276,7 +276,7 @@ def _build_scope_avg_compare(rows: list[VadminSportScore], auth: Auth) -> dict[s
         return {
             'mode': mode,
             'label_name': '学生',
-            'metric_name': '体测平均情况',
+            'metric_name': '平均分',
             'labels': [item['label'] for item in ranked],
             'values': [item['value'] for item in ranked]
         }
@@ -296,7 +296,7 @@ def _build_scope_avg_compare(rows: list[VadminSportScore], auth: Auth) -> dict[s
     return {
         'mode': mode,
         'label_name': '年级' if mode == 'grade' else '学校',
-        'metric_name': '体测平均情况',
+        'metric_name': '平均分',
         'labels': labels,
         'values': values
     }
@@ -316,8 +316,8 @@ def _build_scope_avg_compare(rows: list[VadminSportScore], auth: Auth) -> dict[s
 
     return {
         'mode': mode,
-        'label_name': 'å­¦ç”Ÿ' if mode == 'student' else ('å¹´çº§' if mode == 'grade' else 'å­¦æ ¡'),
-        'metric_name': 'ä½“æµ‹å¹³å‡æƒ…å†µ',
+        'label_name': '学生' if mode == 'student' else ('年级' if mode == 'grade' else '学校'),
+        'metric_name': '平均分',
         'labels': [item['label'] for item in ranked],
         'values': [item['value'] for item in ranked]
     }
@@ -325,9 +325,9 @@ def _build_scope_avg_compare(rows: list[VadminSportScore], auth: Auth) -> dict[s
 
 def _normalize_gender(value: str | None) -> str:
     text = str(value or '').strip().lower()
-    if text in {'male', 'm', '1', '男'}:
+    if text in {'male', 'm', '1', '男', '男生', 'man', 'boy'}:
         return 'male'
-    if text in {'female', 'f', '0', '2', '女'}:
+    if text in {'female', 'f', '0', '2', '女', '女生', 'woman', 'girl'}:
         return 'female'
     return 'all'
 
@@ -434,7 +434,7 @@ def _build_scope_avg_compare_v2(
     return {
         'mode': mode,
         'label_name': '学生' if mode == 'student' else ('年级' if mode == 'grade' else '学校'),
-        'metric_name': '体测平均情况',
+        'metric_name': '平均分',
         'labels': [item['label'] for item in ranked],
         'values': [item['value'] for item in ranked]
     }
@@ -471,9 +471,9 @@ def _empty_grade() -> dict[str, Any]:
 
 def _normalize_gender(gender: str | None) -> str:
     text = (gender or '').strip().lower()
-    if ('男' in text) or ('male' in text) or text in {'m', '1'}:
+    if ('男' in text) or ('男生' in text) or ('male' in text) or text in {'m', '1'}:
         return 'male'
-    if ('女' in text) or ('female' in text) or text in {'f', '0', '2'}:
+    if ('女' in text) or ('女生' in text) or ('female' in text) or text in {'f', '0', '2'}:
         return 'female'
     return 'all'
 
@@ -485,16 +485,16 @@ def _normalize_gender_strict(gender: str | None) -> str:
         return 'male'
     if text in {'female', 'f', '0', '2'}:
         return 'female'
-    if ('male' in text) or ('男' in text):
+    if ('男' in text) or ('男生' in text) or ('male' in text):
         return 'male'
-    if ('female' in text) or ('女' in text):
+    if ('女' in text) or ('女生' in text) or ('female' in text):
         return 'female'
     return 'all'
 
 
 def _allows_negative_raw_score(item_code: str | None = None, item_name: str | None = None) -> bool:
     text = f"{item_code or ''} {item_name or ''}".lower()
-    return (item_code or '').lower() == 'sit' or '坐位体前屈' in text
+    return (item_code or '').lower() == 'sit' or '坐位体前屈' in (item_name or '')
 
 
 def _normalize_entry_item_code(item_code: Any) -> str:
@@ -718,7 +718,7 @@ async def get_overview(
         for batch in trend_batches:
             b_rows = [r for r in trend_group.get(batch.id, []) if r.item_code == code]
             values.append(_rows_item_avg_score(b_rows, code))
-        item_trend_series.append({'name': f"{item_name_map.get(code, code)}均分", 'values': values})
+        item_trend_series.append({'name': f"{item_name_map.get(code, code)}", 'values': values})
 
     class_groups = group_scores_by_class(current_rows)
     slots, _slot_name_map = _fitness_slots(current_rows)
@@ -774,7 +774,7 @@ async def get_overview(
     data['class_list'] = _filter_rows_by_scope(auth, data['class_list'], ['school_name', 'class_name'])
     return SuccessResponse(data)
 
-@app.get('/analysis/student', summary='学生体测分析')
+@app.get('/analysis/student', summary='学生分析')
 async def get_student_analysis(
         stage_type: str | None = Query(None),
         school_name: str | None = Query(None),
@@ -839,7 +839,7 @@ async def get_student_analysis(
         class_name=class_name,
         limit=24
     )
-    # 兼容历史数据：若传入 stage_type 无匹配，自动回退到不限制学段再查一次
+    # fallback: if no batch found by stage filter, try without stage filter
     if not batches and stage_type:
         batches = await list_batches(
             auth.db,
@@ -850,7 +850,7 @@ async def get_student_analysis(
             class_name=class_name,
             limit=24
         )
-    # 兼容基础档案与批次字段不一致场景：按学生号回退推导批次
+    # if student query exists, try wider lookups progressively
     if student_no:
         fallback_batches: list[VadminSportBatch] = []
         for candidate in [
@@ -885,7 +885,7 @@ async def get_student_analysis(
         student_no=student_no,
         student_keyword=student_keyword
     )
-    # 兼容历史数据：若按组织维度无结果，且已明确 student_no，则放宽组织维度重查
+    # fallback: remove scope constraint and query by student_no only
     if not all_rows and student_no:
         all_rows = await list_scores(
             auth.db,
@@ -988,7 +988,7 @@ async def get_student_analysis(
     for row in rows:
         item_name_map.setdefault(_normalize_entry_item_code(row.item_code), row.item_name)
 
-    # 多维雷达指标：来源于“最新批次对应标准”的标准项（按 sort 排序）
+    # fallback to configured standard item order when available
     standard_item_all = (await auth.db.scalars(
         select(VadminSportStandardItem).where(
             VadminSportStandardItem.is_delete == false(),
@@ -1024,7 +1024,7 @@ async def get_student_analysis(
         radar_max.append(max_v if max_v > 0 else 100.0)
 
     if not standard_item_rows:
-        # 回退：基于当前已录入项目
+        # if no configured items, keep available item order
         for code in item_codes:
             radar_values.append(latest_item_point_map.get(code, 0.0))
             radar_max.append(100.0)
@@ -1114,7 +1114,7 @@ async def get_student_analysis(
         'detail_list': detail_list
     })
 
-@app.get('/analysis/student/self', summary='体测学生本人视图')
+@app.get('/analysis/student/self', summary='学生自助分析')
 async def get_student_analysis_self(
         stage_type: str | None = Query(None),
         school_name: str | None = Query(None),
@@ -1129,7 +1129,7 @@ async def get_student_analysis_self(
         getattr(auth.user, 'is_staff', None), student_no
     )
     if not getattr(auth.user, 'is_staff', False):
-        return ErrorResponse('学生端不展示成绩与得分，请通过成绩录入入口提交成绩')
+        return ErrorResponse('请先绑定学生账号')
     if getattr(auth.user, 'is_staff', False):
         if not student_no:
             return SuccessResponse(_empty_student())
@@ -1173,7 +1173,7 @@ async def get_student_analysis_self(
             auth=auth
         )
 
-    # 档案匹配失败或该档案暂无成绩时，按手机号从成绩表反查最近一条成绩进行兜底
+    # fallback using latest score context when profile context is unavailable
     payload = getattr(resp, 'data', {}).get('data') if resp else None
     if not isinstance(payload, dict) or not payload.get('profile'):
         score_ctx = await _get_self_score_context(auth.db, telephone)
@@ -1211,7 +1211,7 @@ async def get_student_analysis_self(
     return resp
 
 
-@app.get('/analysis/class', summary='班级体测分析')
+@app.get('/analysis/class', summary='班级分析')
 async def get_class_analysis(
         batch_id: int | None = Query(None),
         stage_type: str | None = Query(None),
@@ -1328,7 +1328,7 @@ async def get_class_analysis(
         for batch in history_batches:
             b_rows = [r for r in history_by_batch.get(batch.id, []) if r.item_code == code]
             values.append(_rows_item_avg_score(b_rows, code))
-        history_series.append({'name': f"{item_name_map.get(code, code)}均分", 'values': values})
+        history_series.append({'name': f"{item_name_map.get(code, code)}", 'values': values})
 
     current_items = item_codes[:5]
     current_pass = []
@@ -1355,7 +1355,7 @@ async def get_class_analysis(
     }
     return SuccessResponse(data)
 
-@app.get('/analysis/grade', summary='年级体测分析')
+@app.get('/analysis/grade', summary='年级分析')
 async def get_grade_analysis(
         batch_id: int | None = Query(None),
         stage_type: str | None = Query(None),
@@ -1426,7 +1426,7 @@ async def get_grade_analysis(
         for cls in class_names:
             c_rows = [r for r in class_groups[cls] if r.item_code == code]
             values.append(_rows_item_avg_score(c_rows, code))
-        class_item_avg_series.append({'name': f"{item_name_map.get(code, code)}均分", 'values': values})
+        class_item_avg_series.append({'name': f"{item_name_map.get(code, code)}", 'values': values})
 
     focus_code = item_codes[0] if item_codes else ''
     rate_pass = []
@@ -1507,26 +1507,26 @@ async def get_grade_analysis(
     }
     return SuccessResponse(data)
 
-@app.get('/entry/template', summary='体测录入模板配置')
+@app.get('/entry/template', summary='获取录入模板')
 async def get_entry_template(auth: Auth = Depends(FullAdminAuth(permissions=['fitness.score.entry']))):
     data = {
-        'items': ['BMI', '肺活量', '50米', '坐位体前屈', '跳绳', '跳远', '力量项', '耐力跑'],
-        'calc_policy': '仅录入成绩可自动计算分值',
-        'conflict_policy': '就低不就高'
+        'items': ['BMI', '肺活量', '50米跑', '坐位体前屈', '立定跳远', '引体向上', '1分钟仰卧起坐', '1000米跑', '800米跑', '身高', '体重', '老师评语'],
+        'calc_policy': '按标准计算',
+        'conflict_policy': '以新数据为准'
     }
     return SuccessResponse(data)
 
 
-@app.get('/report/config', summary='体测报表配置')
+@app.get('/report/config', summary='报告配置')
 async def get_report_config(auth: Auth = Depends(FullAdminAuth(permissions=['fitness.report.export']))):
     data = {
-        'report_types': ['学生报表', '班级报表', '年级报表'],
-        'default_fields': ['学生基础信息', '项目成绩', '项目评分成绩', '单项及格/优秀/满分状态', '标准版本号']
+        'report_types': ['学生', '班级', '学校'],
+        'default_fields': ['学校', '年级', '班级', '性别/学号', '成绩']
     }
     return SuccessResponse(data)
 
 
-@app.get('/standard/list', summary='体测标准列表')
+@app.get('/standard/list', summary='标准列表')
 async def get_standard_list(auth: Auth = Depends(FullAdminAuth(permissions=['fitness.standard.list']))):
     try:
         stage_type = None
@@ -1543,27 +1543,27 @@ async def get_standard_list(auth: Auth = Depends(FullAdminAuth(permissions=['fit
     data = [
         {
             'id': 1,
-            'name': '重庆市2026体测标准',
-            'region': '重庆市',
+            'name': '体测标准2026',
+            'region': '全国',
             'year': 2026,
-            'stage': '初中',
+            'stage': '中学',
             'version': 'FT-2026.1',
-            'status': '已发布'
+            'status': '启用'
         },
         {
             'id': 2,
-            'name': '重庆市2025体测标准',
-            'region': '重庆市',
+            'name': '体测标准2025',
+            'region': '全国',
             'year': 2025,
-            'stage': '初中',
+            'stage': '中学',
             'version': 'FT-2025.2',
-            'status': '草稿'
+            'status': '停用'
         }
     ]
     return SuccessResponse(data)
 
 
-@app.post('/standard', summary='创建体测标准')
+@app.post('/standard', summary='新增标准')
 async def create_standard(
         payload: dict = Body(...),
         auth: Auth = Depends(FullAdminAuth(permissions=['fitness.standard.list']))
@@ -1604,13 +1604,13 @@ async def create_standard(
     return SuccessResponse({'id': standard.id})
 
 
-@app.post('/batch', summary='创建体测测试批次')
+@app.post('/batch', summary='创建批次')
 async def create_batch(
         payload: dict = Body(...),
         auth: Auth = Depends(FullAdminAuth(permissions=['fitness.score.entry']))
 ):
     if not _in_scope(auth, payload.get('school_name'), payload.get('class_name')):
-        return ErrorResponse('无权限操作当前学校/班级数据')
+        return ErrorResponse('无权操作该批次')
     batch = VadminSportBatch(
         biz_type='fitness',
         batch_name=payload.get('batch_name'),
@@ -1629,7 +1629,7 @@ async def create_batch(
     return SuccessResponse({'id': batch.id})
 
 
-@app.get('/batch/options', summary='体测批次选项')
+@app.get('/batch/options', summary='批次选项')
 async def get_batch_options(
         stage_type: str | None = Query(None),
         auth: Auth = Depends(FullAdminAuth(permissions=['fitness.score.entry']))
@@ -1647,13 +1647,13 @@ async def get_batch_options(
     return SuccessResponse(data)
 
 
-@app.post('/score/upsert', summary='体测成绩录入/更新')
+@app.post('/score/upsert', summary='保存/更新成绩')
 async def upsert_scores(
         payload: dict = Body(...),
         auth: Auth = Depends(FullAdminAuth(permissions=['fitness.score.entry']))
 ):
     if not payload.get('batch_id'):
-        return ErrorResponse('请选择批次')
+        return ErrorResponse('batch_id不能为空')
     batch_id = int(payload.get('batch_id'))
     scores = [item for item in (payload.get('scores') or []) if isinstance(item, dict)]
     if scores and payload.get('validate_import'):
@@ -1925,7 +1925,7 @@ async def upsert_scores(
     return SuccessResponse({'upsert_count': count})
 
 
-@app.get('/batch/list', summary='体测批次列表')
+@app.get('/batch/list', summary='批次列表')
 async def get_batch_list(
         page: int = Query(1),
         limit: int = Query(10),
@@ -1973,7 +1973,7 @@ async def get_batch_list(
     })
 
 
-@app.put('/batch/{id}', summary='更新体测批次')
+@app.put('/batch/{id}', summary='更新批次')
 async def update_batch(
         id: int,
         payload: dict = Body(...),
@@ -1987,7 +1987,7 @@ async def update_batch(
         return ErrorResponse('批次不存在')
     
     if not _in_scope(auth, batch.school_name, batch.class_name):
-        return ErrorResponse('无权限操作该数据')
+        return ErrorResponse('无权限修改此批次')
 
     for key in ['batch_name', 'standard_id', 'status', 'start_date', 'end_date', 'remark', 'school_name', 'grade_name', 'class_name', 'stage_type']:
         if key in payload:
@@ -1997,7 +1997,7 @@ async def update_batch(
     return SuccessResponse('更新成功')
 
 
-@app.delete('/batch/{id}', summary='删除体测批次')
+@app.delete('/batch/{id}', summary='删除批次')
 async def delete_batch(
         id: int,
         auth: Auth = Depends(FullAdminAuth(permissions=['fitness.score.entry']))
@@ -2010,14 +2010,14 @@ async def delete_batch(
         return ErrorResponse('批次不存在')
     
     if not _in_scope(auth, batch.school_name, batch.class_name):
-        return ErrorResponse('无权限操作该数据')
+        return ErrorResponse('无权限删除此批次')
 
     batch.is_delete = True
     await auth.db.flush()
     return SuccessResponse('删除成功')
 
 
-@app.get('/students/options', summary='获取学生选项')
+@app.get('/students/options', summary='学生选项')
 async def get_student_options(
         school_id: int | None = Query(None),
         school_name: str | None = Query(None),
@@ -2096,7 +2096,7 @@ async def get_student_options(
     return SuccessResponse(data)
 
 
-@app.get('/report/export', summary='体测报表导出')
+@app.get('/report/export', summary='导出成绩报告')
 async def export_report(
         batch_id: int | None = Query(None),
         school_name: str | None = Query(None),
@@ -2112,7 +2112,7 @@ async def export_report(
         ]))
 ):
     if not batch_id:
-        return ErrorResponse('请选择批次')
+        return ErrorResponse('batch_id不能为空')
     
     rows = await list_scores(
         auth.db,
@@ -2126,28 +2126,37 @@ async def export_report(
     rows = [r for r in rows if _in_scope(auth, r.school_name, r.class_name)]
     
     if not rows:
-        return ErrorResponse('暂无数据可导出')
+        return ErrorResponse('未找到导出数据')
     
-    filename = f"体测成绩报表_{batch_id}.xlsx"
+    filename = f"成绩报告_{batch_id}.xlsx"
     url = export_scores_to_excel(rows, filename)
     
     return SuccessResponse({'url': url})
 
 
-@app.get('/score/template', summary='下载体测成绩导入模板')
+@app.get('/score/template', summary='下载成绩导入模板')
 async def download_score_template(
         batch_id: int | None = Query(None),
         direct: bool = Query(False),
+        template_style: str = Query('compact'),
         auth: Auth = Depends(FullAdminAuth(permissions=['fitness.score.entry']))
 ):
     if not batch_id:
-        return ErrorResponse('请先选择批次再下载模板')
-    headers, options = await BatchImportService.build_score_template_config(auth.db, auth, 'fitness', batch_id)
+        return ErrorResponse('batch_id不能为空')
+    if template_style not in {'compact', 'wide'}:
+        template_style = 'compact'
+    headers, options = await BatchImportService.build_score_template_config(
+        auth.db,
+        auth,
+        'fitness',
+        batch_id,
+        template_style
+    )
     writer = WriteXlsx()
-    filename = "体测成绩导入模板.xlsx"
+    filename = "成绩导入模板.xlsx"
     writer.create_excel(file_path=filename, save_static=True)
     writer.generate_template(headers)
-    BatchImportService.apply_score_template_validations(writer, options)
+    BatchImportService.apply_score_template_validations(writer, options, template_style=template_style)
     writer.close()
     if direct:
         return FileResponse(
@@ -2158,7 +2167,7 @@ async def download_score_template(
     return SuccessResponse({'url': writer.get_file_url(), 'filename': filename})
 
 
-@app.post('/standard/import', summary='体测标准 Excel 导入解析')
+@app.post('/standard/import', summary='导入标准 Excel')
 async def import_standard(
         file: UploadFile = File(...),
         auth: Auth = Depends(FullAdminAuth(permissions=['fitness.standard.list']))
@@ -2168,7 +2177,7 @@ async def import_standard(
     return SuccessResponse(items)
 
 
-@app.post('/standard/confirm', summary='体测标准人工确认保存')
+@app.post('/standard/confirm', summary='确认标准')
 async def confirm_standard(
         payload: dict = Body(...),
         auth: Auth = Depends(FullAdminAuth(permissions=['fitness.standard.list']))
@@ -2178,16 +2187,16 @@ async def confirm_standard(
     return await create_standard(payload, auth)
 
 
-@app.post('/score/import', summary='体测成绩 Excel 导入解析')
+@app.post('/score/import', summary='导入成绩 Excel')
 async def import_scores(
         batch_id: int | None = Form(None),
         file: UploadFile | None = File(None),
         auth: Auth = Depends(FullAdminAuth(permissions=['fitness.score.entry']))
 ):
     if not batch_id:
-        return ErrorResponse('请先选择批次')
+        return ErrorResponse('batch_id不能为空')
     if not file:
-        return ErrorResponse('请选择要导入的 XLSX 文件')
+        return ErrorResponse('请上传 XLSX 文件')
     content = await file.read()
     scores = BatchImportService.parse_score_excel(content)
     _, scores, import_errors = await BatchImportService.validate_score_rows(auth.db, auth, 'fitness', batch_id, scores)
@@ -2196,7 +2205,7 @@ async def import_scores(
     return SuccessResponse(scores)
 
 
-@app.post('/score/confirm', summary='体测成绩导入人工确认保存')
+@app.post('/score/confirm', summary='提交成绩')
 async def confirm_scores(
         payload: dict = Body(...),
         auth: Auth = Depends(FullAdminAuth(permissions=['fitness.score.entry']))
@@ -2204,7 +2213,7 @@ async def confirm_scores(
     return await upsert_scores(payload, auth)
 
 
-@app.get('/score/batch/students', summary='按项目获取批次学生成绩')
+@app.get('/score/batch/students', summary='批次项目成绩列表')
 async def get_batch_item_scores(
         batch_id: int = Query(...),
         item_code: str = Query(...),
@@ -2216,5 +2225,6 @@ async def get_batch_item_scores(
         VadminSportScore.is_delete == false()
     )
     rows = (await auth.db.scalars(sql)).all()
-    # 使用 model_dump_json() 彻底解决 orjson 兼容性问题
+    # parse model_dump_json output via standard json to keep response format stable
     return SuccessResponse([json.loads(schemas.ScoreOut.model_validate(r).model_dump_json()) for r in rows])
+
