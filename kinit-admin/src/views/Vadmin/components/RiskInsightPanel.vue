@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { ElCard, ElCol, ElEmpty, ElRow, ElTable, ElTableColumn, ElTag } from 'element-plus'
+import { computed, ref } from 'vue'
+import { ElButton, ElCard, ElCol, ElDialog, ElEmpty, ElRow, ElTable, ElTableColumn, ElTag } from 'element-plus'
 
 const props = defineProps({
   data: {
@@ -20,11 +20,30 @@ const itemRisks = computed(() => props.data?.item_risks || [])
 const studentRisks = computed(() => props.data?.student_risks || [])
 const failRecords = computed(() => props.data?.fail_records || [])
 const hasRisk = computed(() => Number(riskKpi.value.fail_record_count || 0) > 0)
+const detailVisible = ref(false)
+const detailTitle = ref('不及格人员与项目明细')
+const detailFilters = ref<Record<string, any>>({})
 
 const showGrade = computed(() => ['overview'].includes(props.mode))
 const showClass = computed(() => ['overview', 'grade'].includes(props.mode))
 const showItem = computed(() => ['overview', 'grade', 'class', 'student'].includes(props.mode))
 const showStudent = computed(() => ['class', 'student'].includes(props.mode))
+const filteredFailRecords = computed(() => {
+  const filters = detailFilters.value
+  return failRecords.value.filter((row: any) => {
+    if (filters.grade_name && row.grade_name !== filters.grade_name) return false
+    if (filters.class_name && row.class_name !== filters.class_name) return false
+    if (filters.item_code && row.item_code !== filters.item_code) return false
+    if (filters.student_no && row.student_no !== filters.student_no) return false
+    return true
+  })
+})
+
+const openDetails = (title: string, filters: Record<string, any> = {}) => {
+  detailTitle.value = title
+  detailFilters.value = filters
+  detailVisible.value = true
+}
 </script>
 
 <template>
@@ -73,7 +92,7 @@ const showStudent = computed(() => ['class', 'student'].includes(props.mode))
         <ElCol v-if="showGrade" :xs="24" :md="12">
           <ElCard shadow="never" class="risk-table-card">
             <div class="risk-table-title">哪些年级拉低水平</div>
-            <ElTable :data="gradeRisks.slice(0, 8)" size="small" stripe>
+            <ElTable :data="gradeRisks.slice(0, 8)" size="small" stripe @row-click="(row: any) => openDetails(`${row.grade_name} 不及格明细`, { grade_name: row.grade_name })">
               <ElTableColumn prop="grade_name" label="年级" min-width="100" />
               <ElTableColumn prop="fail_student_count" label="不及格人数" width="105" align="center" />
               <ElTableColumn prop="fail_record_count" label="不及格项" width="90" align="center" />
@@ -85,7 +104,7 @@ const showStudent = computed(() => ['class', 'student'].includes(props.mode))
         <ElCol v-if="showClass" :xs="24" :md="12">
           <ElCard shadow="never" class="risk-table-card">
             <div class="risk-table-title">哪些班级拉低水平</div>
-            <ElTable :data="classRisks.slice(0, 8)" size="small" stripe>
+            <ElTable :data="classRisks.slice(0, 8)" size="small" stripe @row-click="(row: any) => openDetails(`${row.class_name} 不及格明细`, { class_name: row.class_name })">
               <ElTableColumn prop="class_name" label="班级" min-width="100" />
               <ElTableColumn prop="fail_student_count" label="不及格人数" width="105" align="center" />
               <ElTableColumn prop="fail_record_count" label="不及格项" width="90" align="center" />
@@ -97,7 +116,7 @@ const showStudent = computed(() => ['class', 'student'].includes(props.mode))
         <ElCol v-if="showItem" :xs="24" :md="12">
           <ElCard shadow="never" class="risk-table-card">
             <div class="risk-table-title">哪些项目拉低水平</div>
-            <ElTable :data="itemRisks.filter((i: any) => i.fail_record_count > 0).slice(0, 8)" size="small" stripe>
+            <ElTable :data="itemRisks.filter((i: any) => i.fail_record_count > 0).slice(0, 8)" size="small" stripe @row-click="(row: any) => openDetails(`${row.item_name} 不及格明细`, { item_code: row.item_code })">
               <ElTableColumn prop="item_name" label="项目" min-width="120" />
               <ElTableColumn prop="fail_student_count" label="不及格人数" width="105" align="center" />
               <ElTableColumn prop="avg_score" label="平均分" width="90" align="center" />
@@ -109,7 +128,7 @@ const showStudent = computed(() => ['class', 'student'].includes(props.mode))
         <ElCol v-if="showStudent" :xs="24" :md="12">
           <ElCard shadow="never" class="risk-table-card">
             <div class="risk-table-title">哪些学生拉低水平</div>
-            <ElTable :data="studentRisks.slice(0, 8)" size="small" stripe>
+            <ElTable :data="studentRisks.slice(0, 8)" size="small" stripe @row-click="(row: any) => openDetails(`${row.student_name} 不及格项目`, { student_no: row.student_no })">
               <ElTableColumn prop="student_name" label="学生" min-width="90" />
               <ElTableColumn prop="class_name" label="班级" min-width="90" />
               <ElTableColumn prop="fail_item_count" label="不及格项" width="90" align="center" />
@@ -119,9 +138,14 @@ const showStudent = computed(() => ['class', 'student'].includes(props.mode))
         </ElCol>
       </ElRow>
 
-      <ElCard shadow="never" class="risk-table-card risk-detail-card">
-        <div class="risk-table-title">不及格人员与项目明细</div>
-        <ElTable :data="failRecords.slice(0, 40)" size="small" stripe>
+      <div class="risk-panel__actions">
+        <ElButton type="danger" plain @click="openDetails('全部不及格人员与项目明细')">
+          查看全部不及格明细
+        </ElButton>
+      </div>
+
+      <ElDialog v-model="detailVisible" :title="detailTitle" width="960px" class="risk-detail-dialog">
+        <ElTable :data="filteredFailRecords" size="small" stripe max-height="560">
           <ElTableColumn prop="grade_name" label="年级" min-width="90" />
           <ElTableColumn prop="class_name" label="班级" min-width="90" />
           <ElTableColumn prop="student_name" label="学生" min-width="90" />
@@ -130,7 +154,7 @@ const showStudent = computed(() => ['class', 'student'].includes(props.mode))
           <ElTableColumn prop="raw_score" label="成绩" width="90" align="center" />
           <ElTableColumn prop="score_value" label="分值" width="90" align="center" />
         </ElTable>
-      </ElCard>
+      </ElDialog>
     </template>
   </section>
 </template>
@@ -170,6 +194,10 @@ const showStudent = computed(() => ['class', 'student'].includes(props.mode))
   margin-bottom: 12px;
 }
 
+.risk-panel__tables :deep(.el-table__row) {
+  cursor: pointer;
+}
+
 .risk-kpi {
   min-height: 68px;
   padding: 12px;
@@ -202,7 +230,13 @@ const showStudent = computed(() => ['class', 'student'].includes(props.mode))
   font-weight: 700;
 }
 
-.risk-detail-card {
-  margin-top: 12px;
+.risk-panel__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.risk-detail-dialog :deep(.el-dialog__body) {
+  padding-top: 8px;
 }
 </style>
