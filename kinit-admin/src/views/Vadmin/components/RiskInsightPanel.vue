@@ -144,8 +144,16 @@ const openDetails = (title: string, filters: Record<string, any> = {}) => {
         </ElButton>
       </div>
 
-      <ElDialog v-model="detailVisible" :title="detailTitle" width="960px" class="risk-detail-dialog">
-        <ElTable :data="filteredFailRecords" size="small" stripe max-height="560">
+      <ElDialog
+        v-model="detailVisible"
+        :title="detailTitle"
+        width="min(960px, 92vw)"
+        top="5vh"
+        append-to-body
+        destroy-on-close
+        class="risk-detail-dialog"
+      >
+        <ElTable :data="filteredFailRecords" size="small" stripe max-height="62vh">
           <ElTableColumn prop="grade_name" label="年级" min-width="90" />
           <ElTableColumn prop="class_name" label="班级" min-width="90" />
           <ElTableColumn prop="student_name" label="学生" min-width="90" />
@@ -238,5 +246,11 @@ const openDetails = (title: string, filters: Record<string, any> = {}) => {
 
 .risk-detail-dialog :deep(.el-dialog__body) {
   padding-top: 8px;
+  max-height: 72vh;
+  overflow: hidden;
+}
+
+.risk-detail-dialog :deep(.el-dialog) {
+  margin-bottom: 5vh;
 }
 </style>
