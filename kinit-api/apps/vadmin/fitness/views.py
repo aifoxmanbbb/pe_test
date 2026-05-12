@@ -1112,14 +1112,14 @@ async def get_student_analysis(
         radar_values.append(val)
         max_v = round2(to_float(it.max_score))
         converted_max = _fitness_item_max_point(it.item_code, it.item_name)
-        radar_max.append(converted_max if converted_max > 0 else (max_v if max_v > 0 else 100.0))
+        radar_max.append(converted_max if converted_max > 0 else 0.0)
 
     if not standard_item_rows:
         # if no configured items, keep available item order
         for code in item_codes:
             radar_values.append(latest_item_point_map.get(code, 0.0))
             converted_max = _fitness_item_max_point(code, item_name_map.get(code, code))
-            radar_max.append(converted_max if converted_max > 0 else 100.0)
+            radar_max.append(converted_max if converted_max > 0 else 0.0)
 
     trend_codes = item_codes[:4]
     item_score_series = []
