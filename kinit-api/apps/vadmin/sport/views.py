@@ -715,7 +715,7 @@ def _calc_entry_score(
     normalized_item_code = (str(item_code or '').strip().lower())
     if normalized_item_code in {'height', 'weight'}:
         return {
-            'score_value': 100.0,
+            'score_value': 0.0,
             'is_pass': True,
             'is_excellent': True,
             'is_full': True
