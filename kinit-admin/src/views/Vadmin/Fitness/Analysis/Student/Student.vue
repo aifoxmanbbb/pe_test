@@ -240,13 +240,17 @@ const applyCharts = (data: any) => {
   const values = radar.values || []
   const maxVals = radar.max || []
   const indicators = items
-    .map((name: string, idx: number) => ({ name, max: Number(maxVals[idx] || 100) }))
-    .filter((i: any) => i.name)
+    .map((name: string, idx: number) => ({
+      name,
+      max: maxVals[idx] === undefined || maxVals[idx] === null ? 100 : Number(maxVals[idx]),
+      value: Number(values[idx]) || 0
+    }))
+    .filter((i: any) => i.name && Number(i.max) > 0)
   radarOptions.radar.indicator = indicators
   if (!indicators.length) {
     radarOptions.series[0].data = []
   } else {
-    const alignedValues = indicators.map((_: any, idx: number) => Number(values[idx]) || 0)
+    const alignedValues = indicators.map((i: any) => i.value)
     radarOptions.series[0].data = [{ name: '当前表现', value: alignedValues }]
   }
 }
