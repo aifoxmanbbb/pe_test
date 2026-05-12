@@ -301,16 +301,16 @@ def _fitness_item_point_rule_key_by_text(item_code: str | None, item_name: str |
         return 'record'
     if 'bmi' in text:
         return 'bmi'
-    if '肺活量' in text or 'lung' in text or 'vital' in text:
+    if '肺活量' in text or 'lung' in text or 'vital' in text or 'vital_capacity' in text:
         return 'lung'
-    if '50' in text and ('米' in text or 'm' in text or 'sprint' in text):
+    if ('50' in text and ('米' in text or 'm' in text or 'sprint' in text)) or 'fifty' in text:
         return 'sprint'
-    if '坐位体前屈' in text or 'sit' in text:
-        return 'sit'
-    if '立定跳远' in text or '跳远' in text or 'jump' in text:
-        return 'jump'
-    if '引体向上' in text or '仰卧起坐' in text or 'sit-up' in text or 'pull' in text:
+    if '引体向上' in text or '仰卧起坐' in text or 'sit-up' in text or 'situp' in text or 'pull' in text:
         return 'strength'
+    if '坐位体前屈' in text or 'sit_and_reach' in text or 'sit-reach' in text or 'forward_flexion' in text:
+        return 'sit'
+    if '立定跳远' in text or '跳远' in text or 'long_jump' in text or 'standing_jump' in text or 'jump' in text:
+        return 'jump'
     if '1000' in text or '800' in text or '耐力' in text or '长跑' in text or 'endurance' in text:
         return 'endurance'
     return None
@@ -333,7 +333,7 @@ def _fitness_item_converted_point(row: VadminSportScore) -> float:
     if rule_key == 'record':
         return 0.0
     if not rule_key:
-        return score
+        return 0.0
     rule = FITNESS_ITEM_POINT_RULES[rule_key]
     max_point = to_float(rule.get('max'))
     if max_point <= 0:
@@ -489,8 +489,14 @@ def _student_composite_score(
     rows = _filter_rows_by_standard_gender(rows, batch_standard_map, standard_item_gender_map)
     if not rows:
         return 0.0
-    item_map = {_normalize_entry_item_code(r.item_code): r for r in rows if r.item_code}
-    total_score = sum(_fitness_item_converted_point(r) for r in item_map.values())
+    item_points: dict[str, float] = {}
+    for row in rows:
+        rule_key = _fitness_item_point_rule_key(row)
+        if not rule_key:
+            continue
+        item_key = rule_key if rule_key != 'record' else _normalize_entry_item_code(row.item_code)
+        item_points[item_key] = max(item_points.get(item_key, 0.0), _fitness_item_converted_point(row))
+    total_score = sum(item_points.values())
     return round2(total_score)
 
 
