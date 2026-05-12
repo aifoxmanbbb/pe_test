@@ -1,7 +1,8 @@
 <script setup lang="tsx">
-import { onMounted, reactive, ref, nextTick } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ContentWrap } from '@/components/ContentWrap'
 import { FormSchema, Form } from '@/components/Form'
+import { Search } from '@/components/Search'
 import { ElDialog, ElMessage, ElSwitch } from 'element-plus'
 import { Table, TableColumn } from '@/components/Table'
 import { BaseButton } from '@/components/Button'
@@ -12,7 +13,20 @@ defineOptions({ name: 'PEFGrade' })
 
 const loading = ref(false)
 const list = ref([])
+const total = ref(0)
+const page = ref(1)
+const limit = ref(10)
+const searchParams = ref<Recordable>({})
 const schoolOptions = ref([])
+
+const searchSchema = computed<FormSchema[]>(() => [
+  {
+    field: 'school_id',
+    label: '学校',
+    component: 'Select',
+    componentProps: { options: schoolOptions.value, clearable: true, filterable: true }
+  }
+])
 
 const tableColumns = reactive<TableColumn[]>([
   { field: 'id', label: 'ID', width: '80px' },
@@ -43,9 +57,26 @@ const tableColumns = reactive<TableColumn[]>([
 
 const loadList = async () => {
   loading.value = true
-  const res = await getGradeListApi().catch(() => null)
-  if (res) list.value = res.data
+  const res = await getGradeListApi({
+    ...searchParams.value,
+    page: page.value,
+    limit: limit.value
+  }).catch(() => null)
+  if (res) {
+    const data = res.data
+    list.value = Array.isArray(data) ? data : data.items || []
+    total.value = Array.isArray(data) ? data.length : data.total || 0
+  }
   loading.value = false
+}
+
+const handleSearch = (params: Recordable = {}) => {
+  searchParams.value = { ...params }
+  if (page.value === 1) {
+    loadList()
+    return
+  }
+  page.value = 1
 }
 
 const loadSchools = async () => {
@@ -100,15 +131,27 @@ onMounted(() => {
   loadList()
   loadSchools()
 })
+
+watch([page, limit], () => {
+  loadList()
+})
 </script>
 
 <template>
   <ContentWrap>
     <div class="mb-10px text-18px font-bold">年级管理</div>
+    <Search :schema="searchSchema" @search="handleSearch" @reset="handleSearch" class="mb-10px" />
     <div class="mb-10px">
       <BaseButton type="primary" @click="handleAdd">新增年级</BaseButton>
     </div>
-    <Table :columns="tableColumns" :data="list" :loading="loading" :pagination="false" />
+    <Table
+      :columns="tableColumns"
+      :data="list"
+      :loading="loading"
+      :pagination="{ total }"
+      v-model:pageSize="limit"
+      v-model:currentPage="page"
+    />
     <ElDialog v-model="dialogVisible" :title="currentId ? '编辑年级' : '新增年级'" width="500px" destroy-on-close>
       <Form :schema="formSchema" @register="formRegister" />
       <template #footer>

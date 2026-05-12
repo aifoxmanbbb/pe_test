@@ -1342,20 +1342,35 @@ async def update_school(id: int, data: schemas.SchoolUpdate = Body(...), auth: A
 # ─── 年级管理 ─────────────────────────────────────────────
 
 @app.get("/grade/list", summary="年级列表")
-async def get_grade_list(auth: Auth = Depends(FullAdminAuth(permissions=[GRADE_PERM]))):
+async def get_grade_list(
+    page: int = Query(1),
+    limit: int = Query(10),
+    school_id: int = Query(None),
+    school_name: str = Query(None),
+    auth: Auth = Depends(FullAdminAuth(permissions=[GRADE_PERM]))
+):
     if not _can_manage_grade(auth):
         return ErrorResponse("无权限操作")
     sql = select(VadminPefGrade, VadminPefSchool.school_name)\
         .select_from(VadminPefGrade)\
         .join(VadminPefSchool, VadminPefGrade.school_id == VadminPefSchool.id)\
         .where(VadminPefGrade.is_delete == false())
+    if school_id:
+        sql = sql.where(VadminPefGrade.school_id == school_id)
+    if school_name:
+        sql = sql.where(VadminPefSchool.school_name == school_name)
+    sql = sql.order_by(VadminPefSchool.school_name.asc(), VadminPefGrade.sort.asc(), VadminPefGrade.id.asc())
     result = await auth.db.execute(sql)
     data = []
     for grade, school_name in result.all():
         if not _grade_visible(auth, grade.school_id):
             continue
         data.append(_serialize(grade, schemas.GradeOut, school_name=school_name))
-    return SuccessResponse(data)
+    safe_page = max(page, 1)
+    safe_limit = max(limit, 1)
+    total = len(data)
+    paged = data[(safe_page - 1) * safe_limit:safe_page * safe_limit]
+    return SuccessResponse({"items": paged, "total": total})
 
 @app.post("/grade", summary="创建年级")
 async def create_grade(data: schemas.GradeIn = Body(...), auth: Auth = Depends(FullAdminAuth(permissions=[GRADE_PERM]))):
@@ -1392,7 +1407,15 @@ async def update_grade(id: int, data: schemas.GradeUpdate = Body(...), auth: Aut
 # ─── 班级管理 ─────────────────────────────────────────────
 
 @app.get("/class/list", summary="班级列表")
-async def get_class_list(auth: Auth = Depends(FullAdminAuth(permissions=[CLASS_PERM]))):
+async def get_class_list(
+    page: int = Query(1),
+    limit: int = Query(10),
+    school_id: int = Query(None),
+    school_name: str = Query(None),
+    grade_id: int = Query(None),
+    grade_name: str = Query(None),
+    auth: Auth = Depends(FullAdminAuth(permissions=[CLASS_PERM]))
+):
     if not _can_manage_class(auth):
         return ErrorResponse("无权限操作")
     sql = select(VadminPefClass, VadminPefSchool.school_name, VadminPefGrade.grade_name)\
@@ -1400,6 +1423,15 @@ async def get_class_list(auth: Auth = Depends(FullAdminAuth(permissions=[CLASS_P
         .join(VadminPefSchool, VadminPefClass.school_id == VadminPefSchool.id)\
         .join(VadminPefGrade, VadminPefClass.grade_id == VadminPefGrade.id)\
         .where(VadminPefClass.is_delete == false())
+    if school_id:
+        sql = sql.where(VadminPefClass.school_id == school_id)
+    if school_name:
+        sql = sql.where(VadminPefSchool.school_name == school_name)
+    if grade_id:
+        sql = sql.where(VadminPefClass.grade_id == grade_id)
+    if grade_name:
+        sql = sql.where(VadminPefGrade.grade_name == grade_name)
+    sql = sql.order_by(VadminPefSchool.school_name.asc(), VadminPefGrade.sort.asc(), VadminPefClass.sort.asc(), VadminPefClass.id.asc())
     result = await auth.db.execute(sql)
     rows = result.all()
     coach_ids_map, coach_names_map = await _get_class_coach_map(auth.db, [row[0].id for row in rows])
@@ -1411,7 +1443,11 @@ async def get_class_list(auth: Auth = Depends(FullAdminAuth(permissions=[CLASS_P
         row["coach_user_ids"] = coach_ids_map.get(obj.id, [])
         row["coach_names"] = coach_names_map.get(obj.id, [])
         data.append(row)
-    return SuccessResponse(data)
+    safe_page = max(page, 1)
+    safe_limit = max(limit, 1)
+    total = len(data)
+    paged = data[(safe_page - 1) * safe_limit:safe_page * safe_limit]
+    return SuccessResponse({"items": paged, "total": total})
 
 @app.post("/class", summary="创建班级")
 async def create_class(data: schemas.ClassIn = Body(...), auth: Auth = Depends(FullAdminAuth(permissions=[CLASS_PERM]))):
@@ -1754,7 +1790,9 @@ async def get_student_list(
     page: int = Query(1),
     limit: int = Query(10),
     name: str = Query(None),
+    student_name: str = Query(None),
     student_no: str = Query(None),
+    id_card: str = Query(None),
     school_id: int = Query(None),
     school_name: str = Query(None),
     grade_id: int = Query(None),
@@ -1772,10 +1810,13 @@ async def get_student_list(
         .join(VadminPefClass, VadminPefStudent.class_id == VadminPefClass.id)\
         .where(VadminPefStudent.is_delete == false())
     
-    if name:
-        sql = sql.where(VadminPefStudent.name.like(f"%{name}%"))
+    search_name = name or student_name
+    if search_name:
+        sql = sql.where(VadminPefStudent.name.like(f"%{search_name}%"))
     if student_no:
         sql = sql.where(VadminPefStudent.student_no.like(f"%{student_no}%"))
+    if id_card:
+        sql = sql.where(VadminPefStudent.id_card.like(f"%{id_card}%"))
     if school_id:
         sql = sql.where(VadminPefStudent.school_id == school_id)
     if school_name:
@@ -1788,14 +1829,22 @@ async def get_student_list(
         sql = sql.where(VadminPefStudent.class_id == class_id)
     if class_name:
         sql = sql.where(VadminPefClass.class_name == class_name)
+    sql = sql.order_by(
+        VadminPefSchool.school_name.asc(),
+        VadminPefGrade.sort.asc(),
+        VadminPefClass.sort.asc(),
+        VadminPefStudent.id.asc()
+    )
     
     result = await auth.db.execute(sql)
     all_rows = [
         row for row in result.all()
         if _student_visible(auth, row[0].school_id, row[0].class_id)
     ]
+    safe_page = max(page, 1)
+    safe_limit = max(limit, 1)
     total = len(all_rows)
-    paged = all_rows[(page-1)*limit : page*limit]
+    paged = all_rows[(safe_page - 1) * safe_limit:safe_page * safe_limit]
     
     data = []
     for obj, school_name, grade_name, class_name in paged:

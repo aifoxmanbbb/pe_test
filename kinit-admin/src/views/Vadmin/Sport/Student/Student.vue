@@ -1,5 +1,5 @@
 <script setup lang="tsx">
-import { onMounted, reactive, ref, nextTick } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ContentWrap } from '@/components/ContentWrap'
 import { FormSchema, Form } from '@/components/Form'
 import { Search } from '@/components/Search'
@@ -25,10 +25,14 @@ const list = ref([])
 const total = ref(0)
 const page = ref(1)
 const limit = ref(10)
+const searchParams = ref<Recordable>({})
 
 const schoolOptions = ref([])
 const gradeOptions = ref([])
 const classOptions = ref([])
+const searchRef = ref<any>()
+const searchGradeOptions = ref([])
+const searchClassOptions = ref([])
 const { required, isTelephone, isIdCard } = useValidator()
 
 const normalizeGender = (value: unknown) => {
@@ -54,7 +58,51 @@ const optionalTelephone = (_rule: any, value: any, callback: (error?: Error) => 
   isTelephone(_rule, text, callback)
 }
 
-const searchSchema = reactive<FormSchema[]>([{ field: 'name', label: '学生姓名', component: 'Input' }])
+const searchSchema = computed<FormSchema[]>(() => [
+  { field: 'name', label: '学生姓名', component: 'Input' },
+  { field: 'id_card', label: '身份证', component: 'Input' },
+  {
+    field: 'school_id',
+    label: '学校',
+    component: 'Select',
+    componentProps: {
+      options: schoolOptions.value,
+      clearable: true,
+      filterable: true,
+      onChange: async (val: number) => {
+        searchGradeOptions.value = []
+        searchClassOptions.value = []
+        await searchRef.value?.setValues({ grade_id: null, class_id: null })
+        if (!val) return
+        const res = await getGradeOptionsApi({ school_id: val }).catch(() => null)
+        searchGradeOptions.value = res?.data || []
+      }
+    }
+  },
+  {
+    field: 'grade_id',
+    label: '年级',
+    component: 'Select',
+    componentProps: {
+      options: searchGradeOptions.value,
+      clearable: true,
+      filterable: true,
+      onChange: async (val: number) => {
+        searchClassOptions.value = []
+        await searchRef.value?.setValues({ class_id: null })
+        if (!val) return
+        const res = await getClassOptionsApi({ grade_id: val }).catch(() => null)
+        searchClassOptions.value = res?.data || []
+      }
+    }
+  },
+  {
+    field: 'class_id',
+    label: '班级',
+    component: 'Select',
+    componentProps: { options: searchClassOptions.value, clearable: true, filterable: true }
+  }
+])
 
 const tableColumns = reactive<TableColumn[]>([
   { field: 'name', label: '姓名', width: '100px', show: true },
@@ -90,12 +138,40 @@ const tableColumns = reactive<TableColumn[]>([
 
 const loadList = async () => {
   loading.value = true
-  const res = await getStudentListApi({ page: page.value, limit: limit.value }).catch(() => null)
+  const res = await getStudentListApi({
+    ...searchParams.value,
+    page: page.value,
+    limit: limit.value
+  }).catch(() => null)
   if (res && res.data) {
     list.value = res.data.items
     total.value = res.data.total
   }
   loading.value = false
+}
+
+const handleSearch = (params: Recordable = {}) => {
+  searchParams.value = { ...params }
+  if (page.value === 1) {
+    loadList()
+    return
+  }
+  page.value = 1
+}
+
+const handleReset = (params: Recordable = {}) => {
+  searchParams.value = { ...params }
+  searchGradeOptions.value = []
+  searchClassOptions.value = []
+  if (page.value === 1) {
+    loadList()
+    return
+  }
+  page.value = 1
+}
+
+const setSearchRegister = (expose: any) => {
+  searchRef.value = expose
 }
 
 const loadSchools = async () => {
@@ -236,12 +312,16 @@ onMounted(() => {
   loadList()
   loadSchools()
 })
+
+watch([page, limit], () => {
+  loadList()
+})
 </script>
 
 <template>
   <ContentWrap>
     <div class="mb-10px text-18px font-bold">学生档案管理</div>
-    <Search :schema="searchSchema" @search="loadList" @reset="loadList" class="mb-10px" />
+    <Search :schema="searchSchema" @register="setSearchRegister" @search="handleSearch" @reset="handleReset" class="mb-10px" />
     <div class="mb-10px">
       <BaseButton type="primary" @click="handleAdd">新增学生</BaseButton>
       <BaseButton type="success" class="ml-10px" @click="handleImport">批量导入学生</BaseButton>
@@ -253,7 +333,6 @@ onMounted(() => {
       :pagination="{ total }"
       v-model:pageSize="limit"
       v-model:currentPage="page"
-      @register="loadList"
     />
     <ElDialog v-model="dialogVisible" :title="currentId ? '编辑学生' : '新增学生'" width="600px" destroy-on-close>
       <Form :schema="formSchema" :rules="rules" @register="formRegister" />
