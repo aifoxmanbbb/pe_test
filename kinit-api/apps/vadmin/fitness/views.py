@@ -23,6 +23,7 @@ from apps.vadmin.sport.models import (
 from apps.vadmin.sport import schemas
 from apps.vadmin.sport.service.analytics_service import (
     avg,
+    build_fail_risk,
     build_rate_text,
     format_score,
     group_scores_by_batch,
@@ -861,6 +862,7 @@ async def get_overview(
         'detail_columns': detail_columns,
         'class_list': class_list
     }
+    data.update(build_fail_risk(current_rows, exclude_item_codes={'height', 'weight'}))
     data['class_list'] = _filter_rows_by_scope(auth, data['class_list'], ['school_name', 'class_name'])
     return SuccessResponse(data)
 
@@ -1192,7 +1194,7 @@ async def get_student_analysis(
         detail_row['items'] = detail_item_values
         detail_list.append(detail_row)
 
-    return SuccessResponse({
+    data = {
         'profile': profile,
         'stats': stats,
         'multi_dim_radar': {
@@ -1204,7 +1206,9 @@ async def get_student_analysis(
         'item_state_trend': item_state,
         'detail_columns': detail_items,
         'detail_list': detail_list
-    })
+    }
+    data.update(build_fail_risk(latest_rows, exclude_item_codes={'height', 'weight'}))
+    return SuccessResponse(data)
 
 @app.get('/analysis/student/self', summary='学生自助分析')
 async def get_student_analysis_self(
@@ -1444,6 +1448,7 @@ async def get_class_analysis(
         'detail_columns': detail_columns,
         'rank_list': rank_data
     }
+    data.update(build_fail_risk(current_rows, exclude_item_codes={'height', 'weight'}))
     return SuccessResponse(data)
 
 @app.get('/analysis/grade', summary='年级分析')
@@ -1596,6 +1601,7 @@ async def get_grade_analysis(
         'detail_columns': detail_columns,
         'class_list': class_list
     }
+    data.update(build_fail_risk(current_rows, exclude_item_codes={'height', 'weight'}))
     return SuccessResponse(data)
 
 @app.get('/entry/template', summary='获取录入模板')

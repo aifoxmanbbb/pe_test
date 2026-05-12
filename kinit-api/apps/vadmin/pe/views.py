@@ -23,6 +23,7 @@ from apps.vadmin.sport.models import (
 from apps.vadmin.sport import schemas
 from apps.vadmin.sport.service.analytics_service import (
     avg,
+    build_fail_risk,
     classify_total,
     format_score,
     get_standard_item_thresholds,
@@ -666,6 +667,7 @@ async def get_overview(
         'scope_avg_compare': _build_scope_avg_compare(trend_rows or current_rows, auth),
         'class_list': class_list
     }
+    data.update(build_fail_risk(current_rows))
     data['class_list'] = _filter_rows_by_scope(auth, data['class_list'], ['school_name', 'class_name'])
     return SuccessResponse(data)
 
@@ -864,13 +866,15 @@ async def get_student_analysis(
             'teacher_comment': comment
         })
 
-    return SuccessResponse({
+    data = {
         'profile': profile,
         'stats': stats,
         'total_trend': total_trend,
         'item_trend': item_trend,
         'detail_list': detail_list
-    })
+    }
+    data.update(build_fail_risk(latest_rows))
+    return SuccessResponse(data)
 
 @app.get('/analysis/student/self', summary='体考学生本人视图')
 async def get_student_analysis_self(
@@ -1123,6 +1127,7 @@ async def get_class_analysis(
         },
         'rank_list': rank_data
     }
+    data.update(build_fail_risk(current_rows))
     return SuccessResponse(data)
 
 @app.get('/analysis/grade', summary='体考年级对比分析')
@@ -1312,6 +1317,7 @@ async def get_grade_analysis(
         },
         'class_list': class_list
     }
+    data.update(build_fail_risk(current_rows))
     return SuccessResponse(data)
 
 @app.get('/entry/template', summary='体考录入模板配置')

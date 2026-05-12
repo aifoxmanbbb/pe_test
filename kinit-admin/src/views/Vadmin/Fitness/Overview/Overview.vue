@@ -11,6 +11,7 @@ import { getClassOptionsApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/a
 import { setCssVar } from '@/utils'
 import { analysisHeroImages } from '@/constants/cockpit'
 import { openScoreReport } from '@/utils/scoreReportExport'
+import RiskInsightPanel from '@/views/Vadmin/components/RiskInsightPanel.vue'
 
 defineOptions({ name: 'FitnessOverview' })
 
@@ -375,6 +376,8 @@ onBeforeUnmount(() => {
             <ElCol :xs="24" :sm="24" :md="12" :lg="12" :xl="12"><Echart :options="itemAvgOptions" height="320px" /></ElCol>
             <ElCol :xs="24" :sm="24" :md="12" :lg="12" :xl="12"><Echart :options="itemRateOptions" height="320px" /></ElCol>
           </ElRow>
+
+          <RiskInsightPanel :data="result" mode="overview" />
 
           <Echart :options="itemTrendOptions" height="300px" class="mb-14px" />
 

@@ -24,6 +24,7 @@ import { getClassOptionsApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/a
 import { useHeaderTheme } from '@/hooks/web/useHeaderTheme'
 import { analysisHeroImages } from '@/constants/cockpit'
 import { openScoreReport } from '@/utils/scoreReportExport'
+import RiskInsightPanel from '@/views/Vadmin/components/RiskInsightPanel.vue'
 
 defineOptions({ name: 'PEStudentAnalysis' })
 
@@ -43,6 +44,7 @@ const headerThemeMap = {
 }
 
 const profile = ref<any>(null)
+const result = ref<any>(null)
 const stats = ref<any>(null)
 const detailList = ref<any[]>([])
 
@@ -218,12 +220,14 @@ const loadData = async (params: Record<string, any> = lastParams.value) => {
 
   const res = await getPeStudentAnalysisApi(query).catch(() => null)
   if (!res?.data?.profile) {
+    result.value = null
     profile.value = null
     stats.value = null
     detailList.value = []
     return
   }
 
+  result.value = res.data
   profile.value = res.data.profile
   stats.value = res.data.stats || {}
   detailList.value = res.data.detail_list || []
@@ -433,6 +437,8 @@ useHeaderTheme(() => stageType.value, headerThemeMap, 'mid')
           <ElCol :xs="24" :sm="24" :md="10" :lg="10" :xl="10"><Echart :options="totalTrendOptions" height="300px" /></ElCol>
           <ElCol :xs="24" :sm="24" :md="14" :lg="14" :xl="14"><Echart :options="itemTrendOptions" height="300px" /></ElCol>
         </ElRow>
+
+        <RiskInsightPanel :data="result" mode="student" />
 
         <ElTable :data="detailList" stripe>
           <ElTableColumn prop="batch_name" label="批次" min-width="160" />

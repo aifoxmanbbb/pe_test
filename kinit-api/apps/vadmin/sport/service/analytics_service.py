@@ -210,6 +210,119 @@ def classify_total(total_score: float, pass_line: float, excellent_line: float, 
     }
 
 
+def build_fail_risk(rows: list[VadminSportScore], exclude_item_codes: set[str] | None = None) -> dict[str, Any]:
+    exclude_item_codes = exclude_item_codes or set()
+    latest: dict[tuple[int, str, str], VadminSportScore] = {}
+    for row in rows:
+        item_code = str(row.item_code or '')
+        if item_code in exclude_item_codes:
+            continue
+        key = (int(row.batch_id or 0), str(row.student_no or ''), item_code)
+        old = latest.get(key)
+        if not old or int(row.id or 0) >= int(old.id or 0):
+            latest[key] = row
+
+    scoped_rows = list(latest.values())
+    fail_rows = [row for row in scoped_rows if not bool(row.is_pass)]
+    by_student = group_scores_by_student(scoped_rows)
+    fail_students = {str(row.student_no or '') for row in fail_rows if row.student_no}
+
+    def _bucket(label_getter, key_name: str) -> list[dict[str, Any]]:
+        buckets: dict[str, list[VadminSportScore]] = defaultdict(list)
+        for row in scoped_rows:
+            buckets[str(label_getter(row) or '-')].append(row)
+        result = []
+        for label, b_rows in buckets.items():
+            b_fail = [row for row in b_rows if not bool(row.is_pass)]
+            fail_student_set = {str(row.student_no or '') for row in b_fail if row.student_no}
+            item_counter: dict[str, int] = defaultdict(int)
+            for row in b_fail:
+                item_counter[row.item_name or row.item_code or '-'] += 1
+            top_item = sorted(item_counter.items(), key=lambda item: (-item[1], item[0]))[0][0] if item_counter else '-'
+            result.append({
+                key_name: label,
+                'student_count': len(group_scores_by_student(b_rows)),
+                'fail_student_count': len(fail_student_set),
+                'fail_record_count': len(b_fail),
+                'avg_score': avg([to_float(row.score_value) for row in b_rows]),
+                'top_fail_item': top_item
+            })
+        return sorted(result, key=lambda item: (-item['fail_student_count'], -item['fail_record_count'], item['avg_score'], item[key_name]))
+
+    item_buckets: dict[str, list[VadminSportScore]] = defaultdict(list)
+    for row in scoped_rows:
+        item_buckets[str(row.item_code or '')].append(row)
+    item_risks = []
+    for code, i_rows in item_buckets.items():
+        i_fail = [row for row in i_rows if not bool(row.is_pass)]
+        fail_student_set = {str(row.student_no or '') for row in i_fail if row.student_no}
+        class_set = {str(row.class_name or '') for row in i_fail if row.class_name}
+        scores = [to_float(row.score_value) for row in i_rows]
+        item_risks.append({
+            'item_code': code,
+            'item_name': i_rows[0].item_name if i_rows else code,
+            'student_count': len(group_scores_by_student(i_rows)),
+            'fail_student_count': len(fail_student_set),
+            'fail_record_count': len(i_fail),
+            'class_count': len(class_set),
+            'avg_score': avg(scores),
+            'min_score': round2(min(scores)) if scores else 0.0
+        })
+    item_risks = sorted(item_risks, key=lambda item: (-item['fail_student_count'], -item['fail_record_count'], item['avg_score'], item['item_name']))
+
+    student_risks = []
+    for student_no, s_rows in by_student.items():
+        s_fail = [row for row in s_rows if not bool(row.is_pass)]
+        if not s_fail:
+            continue
+        first = s_rows[0]
+        lowest = sorted(s_fail, key=lambda row: to_float(row.score_value))[0]
+        student_risks.append({
+            'school_name': first.school_name,
+            'grade_name': first.grade_name,
+            'class_name': first.class_name,
+            'student_no': student_no,
+            'student_name': first.student_name,
+            'fail_item_count': len(s_fail),
+            'lowest_item': lowest.item_name or lowest.item_code,
+            'lowest_score': round2(to_float(lowest.score_value)),
+            'fail_items_text': '、'.join([row.item_name or row.item_code or '-' for row in s_fail])
+        })
+    student_risks = sorted(student_risks, key=lambda item: (-item['fail_item_count'], item['lowest_score'], item['class_name'], item['student_name']))
+
+    fail_records = [{
+        'school_name': row.school_name,
+        'grade_name': row.grade_name,
+        'class_name': row.class_name,
+        'student_no': row.student_no,
+        'student_name': row.student_name,
+        'item_code': row.item_code,
+        'item_name': row.item_name,
+        'raw_score': format_score(to_float(row.raw_score)),
+        'score_value': round2(to_float(row.score_value))
+    } for row in sorted(fail_rows, key=lambda r: (r.grade_name or '', r.class_name or '', r.student_name or '', r.item_name or ''))]
+
+    top_class = _bucket(lambda row: row.class_name, 'class_name')[:1]
+    top_grade = _bucket(lambda row: row.grade_name, 'grade_name')[:1]
+    top_item = item_risks[:1]
+    return {
+        'risk_kpi': {
+            'student_count': len(by_student),
+            'fail_student_count': len(fail_students),
+            'fail_record_count': len(fail_rows),
+            'fail_rate': pct(len(fail_students), len(by_student)),
+            'top_grade': top_grade[0]['grade_name'] if top_grade else '-',
+            'top_class': top_class[0]['class_name'] if top_class else '-',
+            'top_item': top_item[0]['item_name'] if top_item else '-'
+        },
+        'grade_risks': _bucket(lambda row: row.grade_name, 'grade_name'),
+        'class_risks': _bucket(lambda row: row.class_name, 'class_name'),
+        'item_risks': item_risks,
+        'student_risks': student_risks,
+        'fail_records': fail_records
+    }
+
+
 def first_or_none(rows: list[Any]) -> Any | None:
     return rows[0] if rows else None
 

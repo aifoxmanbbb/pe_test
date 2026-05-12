@@ -11,6 +11,7 @@ import { getClassOptionsApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/a
 import { setCssVar } from '@/utils'
 import { analysisHeroImages } from '@/constants/cockpit'
 import { openScoreReport } from '@/utils/scoreReportExport'
+import RiskInsightPanel from '@/views/Vadmin/components/RiskInsightPanel.vue'
 
 defineOptions({ name: 'PEOverview' })
 
@@ -391,6 +392,8 @@ onBeforeUnmount(() => {
           </ElRow>
 
           <Echart :options="batchTrendOptions" height="300px" class="mb-14px" />
+
+          <RiskInsightPanel :data="result" mode="overview" />
 
           <ElTable :data="classList" :span-method="schoolSpanMethod" stripe>
             <ElTableColumn prop="school_name" label="学校" min-width="160" />

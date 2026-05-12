@@ -11,6 +11,7 @@ import { getClassOptionsApi, getGradeOptionsApi, getSchoolOptionsApi } from '@/a
 import { useHeaderTheme } from '@/hooks/web/useHeaderTheme'
 import { analysisHeroImages } from '@/constants/cockpit'
 import { openScoreReport } from '@/utils/scoreReportExport'
+import RiskInsightPanel from '@/views/Vadmin/components/RiskInsightPanel.vue'
 
 defineOptions({ name: 'FitnessClassAnalysis' })
 
@@ -32,6 +33,7 @@ const headerThemeMap = {
 }
 
 const kpi = ref<any>(null)
+const result = ref<any>(null)
 const rankList = ref<any[]>([])
 const detailColumns = ref<any[]>([])
 
@@ -141,11 +143,13 @@ const loadData = async (params: Record<string, any> = lastParams.value) => {
   lastParams.value = { ...params }
   const res = await getFitnessClassAnalysisApi(query).catch(() => null)
   if (!res?.data?.kpi) {
+    result.value = null
     kpi.value = null
     rankList.value = []
     detailColumns.value = []
     return
   }
+  result.value = res.data
   kpi.value = res.data.kpi
   rankList.value = res.data.rank_list || []
   detailColumns.value = res.data.detail_columns || []
@@ -271,6 +275,8 @@ useHeaderTheme(() => stageType.value, headerThemeMap, 'primary')
           <ElCol :xs="24" :sm="24" :md="12" :lg="12" :xl="12"><Echart :options="historyItemAvgOptions" height="320px" /></ElCol>
           <ElCol :xs="24" :sm="24" :md="12" :lg="12" :xl="12"><Echart :options="currentRateOptions" height="320px" /></ElCol>
         </ElRow>
+
+        <RiskInsightPanel :data="result" mode="class" />
 
         <ElTable :data="rankList" stripe>
           <ElTableColumn prop="rank" label="排名" min-width="70" align="center" />

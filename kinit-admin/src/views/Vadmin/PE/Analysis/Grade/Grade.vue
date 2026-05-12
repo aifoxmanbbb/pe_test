@@ -11,6 +11,7 @@ import { getGradeOptionsApi, getSchoolOptionsApi } from '@/api/vadmin/sport'
 import { useHeaderTheme } from '@/hooks/web/useHeaderTheme'
 import { analysisHeroImages } from '@/constants/cockpit'
 import { openScoreReport } from '@/utils/scoreReportExport'
+import RiskInsightPanel from '@/views/Vadmin/components/RiskInsightPanel.vue'
 
 defineOptions({ name: 'PEGradeAnalysis' })
 
@@ -28,6 +29,7 @@ const headerThemeMap = {
 }
 
 const kpi = ref<any>(null)
+const result = ref<any>(null)
 const classList = ref<any[]>([])
 
 const searchSchema = computed<FormSchema[]>(() => [
@@ -141,10 +143,12 @@ const loadData = async (params: Record<string, any> = lastParams.value) => {
   lastParams.value = { ...params }
   const res = await getPeGradeAnalysisApi(query).catch(() => null)
   if (!res?.data?.kpi) {
+    result.value = null
     kpi.value = null
     classList.value = []
     return
   }
+  result.value = res.data
   kpi.value = res.data.kpi
   classList.value = res.data.class_list || []
   applyCharts(res.data)
@@ -265,6 +269,8 @@ useHeaderTheme(() => stageType.value, headerThemeMap, 'mid')
           </ElRow>
 
           <Echart :options="classHistoryOptions" height="300px" class="mb-14px" />
+
+          <RiskInsightPanel :data="result" mode="grade" />
 
           <ElTable :data="classList" stripe>
             <ElTableColumn prop="class_name" label="班级" min-width="120" />
