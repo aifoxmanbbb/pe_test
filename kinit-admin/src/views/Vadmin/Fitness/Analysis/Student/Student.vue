@@ -140,7 +140,7 @@ const titleText = computed(() => {
 })
 
 const heroStats = computed(() => [
-  { label: '综合评分', value: Number(comprehensiveScore.value || 0).toFixed(1), suffix: '分' },
+  { label: '体测总分', value: Number(comprehensiveScore.value || 0).toFixed(1), suffix: '分' },
   { label: '已测项目', value: Number(stats.value?.tested_item_count || 0), suffix: '项' },
   { label: '及格项目', value: Number(stats.value?.pass_items || 0), suffix: '项' },
   { label: '满分项目', value: Number(stats.value?.full_item_count || 0), suffix: '项' }
@@ -159,12 +159,12 @@ const comprehensiveScore = computed(() => {
     .map((i: any) => Number(i?.score_value || 0))
     .filter((v: number) => !Number.isNaN(v))
   if (!scoreList.length) return 0
-  return Number((scoreList.reduce((a, b) => a + b, 0) / scoreList.length).toFixed(2))
+  return Number(scoreList.reduce((a, b) => a + b, 0).toFixed(2))
 })
 const comprehensiveTotal = computed(() => {
   const maxList = (radarOptions.radar?.indicator || []).map((i: any) => Number(i?.max) || 0).filter((n: number) => n > 0)
   if (!maxList.length) return 100
-  return Number((maxList.reduce((a: number, b: number) => a + b, 0) / maxList.length).toFixed(2))
+  return Number(maxList.reduce((a: number, b: number) => a + b, 0).toFixed(2))
 })
 
 const comprehensiveScoreClass = computed(() => {
@@ -176,7 +176,7 @@ const comprehensiveScoreClass = computed(() => {
 })
 
 const radarOptions = reactive<any>({
-  title: { text: '学生多维综合评估', left: 'center', textStyle: { fontSize: 14, fontWeight: 600 } },
+  title: { text: '学生单项得分评估', left: 'center', textStyle: { fontSize: 14, fontWeight: 600 } },
   tooltip: { trigger: 'item' },
   radar: {
     indicator: []
@@ -359,7 +359,7 @@ useHeaderTheme(() => stageType.value, headerThemeMap, 'primary')
           <div class="analysis-hero__gauge">
             <div class="analysis-hero__gauge-ring"></div>
             <div class="analysis-hero__gauge-inner">
-              <div class="analysis-hero__gauge-label">综合评分</div>
+              <div class="analysis-hero__gauge-label">体测总分</div>
               <div class="analysis-hero__gauge-value">{{ comprehensiveScore }}</div>
               <div class="analysis-hero__gauge-unit">分</div>
             </div>
@@ -385,7 +385,7 @@ useHeaderTheme(() => stageType.value, headerThemeMap, 'primary')
         <ElRow :gutter="12" class="analysis-kpi-row mb-14px profile-row">
           <ElCol :xs="24" :sm="24" :md="8" :lg="6" :xl="6" class="stretch-col">
             <ElCard shadow="hover" class="text-center same-height-card score-card">
-              <div class="card-subtitle mb-6px">综合评分</div>
+              <div class="card-subtitle mb-6px">体测总分</div>
               <div class="score-line">
                 <span class="text-30px font-700" :class="comprehensiveScoreClass">{{ comprehensiveScore }}</span>
                 <span class="score-total">/{{ comprehensiveTotal }}</span>

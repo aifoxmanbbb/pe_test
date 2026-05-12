@@ -180,7 +180,7 @@ def _rows_item_avg_score(rows: list[VadminSportScore], item_code: str) -> float:
     if not item_code:
         return 0.0
     normalized_code = _normalize_entry_item_code(item_code)
-    return avg([to_float(r.score_value) for r in rows if _normalize_entry_item_code(r.item_code) == normalized_code])
+    return avg([_fitness_item_converted_point(r) for r in rows if _normalize_entry_item_code(r.item_code) == normalized_code])
 
 
 def _rows_item_avg_raw(rows: list[VadminSportScore], item_code: str) -> float:
@@ -217,7 +217,7 @@ def _item_detail_cells(rows: list[VadminSportScore], columns: list[dict[str, str
             'item_code': col['item_code'],
             'item_name': col['item_name'],
             'raw_score': format_score(to_float(row.raw_score) if row else None),
-            'score_value': round2(to_float(row.score_value)) if row else 0.0,
+            'score_value': _fitness_item_converted_point(row) if row else 0.0,
             'rate_text': rate_text
         })
     return cells
@@ -243,7 +243,7 @@ def _empty_overview() -> dict[str, Any]:
         'item_avg': {'items': [], 'values': [], 'threshold': {'pass': 60, 'excellent': 80, 'full': 100}},
         'item_rate': {'items': [], 'pass_rate': [], 'excellent_rate': [], 'full_rate': []},
         'item_trend': {'batches': [], 'series': []},
-        'scope_avg_compare': {'mode': 'school', 'label_name': '学校', 'metric_name': '平均分', 'labels': [], 'values': []},
+        'scope_avg_compare': {'mode': 'school', 'label_name': '学校', 'metric_name': '平均总分', 'labels': [], 'values': []},
         'class_list': []
     }
 
@@ -258,7 +258,97 @@ def _scope_mode(auth: Auth) -> str:
 
 
 def _student_avg_score(rows: list[VadminSportScore]) -> float:
-    return avg([to_float(r.score_value) for r in rows])
+    return avg([_fitness_item_converted_point(r) for r in rows])
+
+
+FITNESS_ITEM_POINT_RULES: dict[str, dict[str, Any]] = {
+    'bmi': {'max': 15.0, 'points': {100: 15.0, 80: 12.0, 60: 9.0}},
+    'lung': {'max': 15.0},
+    'sprint': {'max': 20.0},
+    'sit': {'max': 10.0},
+    'jump': {'max': 10.0},
+    'strength': {'max': 10.0},
+    'endurance': {'max': 20.0},
+}
+
+FITNESS_SCORE_POINT_TABLE: dict[int, float] = {
+    100: 1.0,
+    95: 0.95,
+    90: 0.9,
+    85: 0.85,
+    80: 0.8,
+    78: 0.78,
+    76: 0.76,
+    74: 0.74,
+    72: 0.72,
+    70: 0.7,
+    68: 0.68,
+    66: 0.66,
+    64: 0.64,
+    62: 0.62,
+    60: 0.6,
+    50: 0.5,
+    40: 0.4,
+    30: 0.3,
+    20: 0.2,
+    10: 0.1,
+}
+
+
+def _fitness_item_point_rule_key_by_text(item_code: str | None, item_name: str | None) -> str | None:
+    text = f"{item_code or ''} {item_name or ''}".lower()
+    if 'height' in text or 'weight' in text or '身高' in text or '体重' in text:
+        return 'record'
+    if 'bmi' in text:
+        return 'bmi'
+    if '肺活量' in text or 'lung' in text or 'vital' in text:
+        return 'lung'
+    if '50' in text and ('米' in text or 'm' in text or 'sprint' in text):
+        return 'sprint'
+    if '坐位体前屈' in text or 'sit' in text:
+        return 'sit'
+    if '立定跳远' in text or '跳远' in text or 'jump' in text:
+        return 'jump'
+    if '引体向上' in text or '仰卧起坐' in text or 'sit-up' in text or 'pull' in text:
+        return 'strength'
+    if '1000' in text or '800' in text or '耐力' in text or '长跑' in text or 'endurance' in text:
+        return 'endurance'
+    return None
+
+
+def _fitness_item_point_rule_key(row: VadminSportScore) -> str | None:
+    return _fitness_item_point_rule_key_by_text(row.item_code, row.item_name)
+
+
+def _fitness_item_max_point(item_code: str | None, item_name: str | None) -> float:
+    rule_key = _fitness_item_point_rule_key_by_text(item_code, item_name)
+    if not rule_key:
+        return 0.0
+    return to_float(FITNESS_ITEM_POINT_RULES[rule_key].get('max'))
+
+
+def _fitness_item_converted_point(row: VadminSportScore) -> float:
+    score = to_float(row.score_value)
+    rule_key = _fitness_item_point_rule_key(row)
+    if rule_key == 'record':
+        return 0.0
+    if not rule_key:
+        return score
+    rule = FITNESS_ITEM_POINT_RULES[rule_key]
+    max_point = to_float(rule.get('max'))
+    if max_point <= 0:
+        return score
+    if 0 < score <= max_point:
+        return score
+    score_key = int(round(score))
+    if rule_key == 'bmi':
+        return round2(rule.get('points', {}).get(score_key, 0.0))
+    ratio = FITNESS_SCORE_POINT_TABLE.get(score_key)
+    if ratio is not None:
+        return round2(max_point * ratio)
+    if 0 < score <= 100:
+        return round2(max_point * score / 100.0)
+    return 0.0
 
 
 def _build_scope_avg_compare(rows: list[VadminSportScore], auth: Auth) -> dict[str, Any]:
@@ -276,7 +366,7 @@ def _build_scope_avg_compare(rows: list[VadminSportScore], auth: Auth) -> dict[s
         return {
             'mode': mode,
             'label_name': '学生',
-            'metric_name': '平均分',
+            'metric_name': '平均总分',
             'labels': [item['label'] for item in ranked],
             'values': [item['value'] for item in ranked]
         }
@@ -296,7 +386,7 @@ def _build_scope_avg_compare(rows: list[VadminSportScore], auth: Auth) -> dict[s
     return {
         'mode': mode,
         'label_name': '年级' if mode == 'grade' else '学校',
-        'metric_name': '平均分',
+        'metric_name': '平均总分',
         'labels': labels,
         'values': values
     }
@@ -317,7 +407,7 @@ def _build_scope_avg_compare(rows: list[VadminSportScore], auth: Auth) -> dict[s
     return {
         'mode': mode,
         'label_name': '学生' if mode == 'student' else ('年级' if mode == 'grade' else '学校'),
-        'metric_name': '平均分',
+        'metric_name': '平均总分',
         'labels': [item['label'] for item in ranked],
         'values': [item['value'] for item in ranked]
     }
@@ -400,14 +490,8 @@ def _student_composite_score(
     if not rows:
         return 0.0
     item_map = {_normalize_entry_item_code(r.item_code): r for r in rows if r.item_code}
-    total_score = sum(to_float(r.score_value) for r in item_map.values())
-    denominator = len(item_map) or 1
-    if batch_standard_map and standard_item_count_map:
-        first = rows[0]
-        standard_id = batch_standard_map.get(first.batch_id)
-        gender = _normalize_gender_strict(first.gender)
-        denominator = standard_item_count_map.get(standard_id or 0, {}).get(gender) or denominator
-    return round2(total_score / max(denominator, 1))
+    total_score = sum(_fitness_item_converted_point(r) for r in item_map.values())
+    return round2(total_score)
 
 
 def _build_scope_avg_compare_v2(
@@ -434,7 +518,7 @@ def _build_scope_avg_compare_v2(
     return {
         'mode': mode,
         'label_name': '学生' if mode == 'student' else ('年级' if mode == 'grade' else '学校'),
-        'metric_name': '平均分',
+        'metric_name': '平均总分',
         'labels': [item['label'] for item in ranked],
         'values': [item['value'] for item in ranked]
     }
@@ -574,7 +658,7 @@ def _calc_by_rule(
     normalized_item_code = (str(item_code or '').strip().lower())
     if normalized_item_code in {'height', 'weight'}:
         return {
-            'score_value': 100.0,
+            'score_value': 0.0,
             'is_pass': True,
             'is_excellent': True,
             'is_full': True
@@ -1013,7 +1097,7 @@ async def get_student_analysis(
 
     latest_item_point_map: dict[str, float] = {}
     for r in latest_rows:
-        latest_item_point_map[_normalize_entry_item_code(r.item_code)] = round2(to_float(r.score_value))
+        latest_item_point_map[_normalize_entry_item_code(r.item_code)] = _fitness_item_converted_point(r)
 
     radar_values = []
     radar_max = []
@@ -1021,13 +1105,15 @@ async def get_student_analysis(
         val = latest_item_point_map.get(_normalize_entry_item_code(it.item_code), 0.0)
         radar_values.append(val)
         max_v = round2(to_float(it.max_score))
-        radar_max.append(max_v if max_v > 0 else 100.0)
+        converted_max = _fitness_item_max_point(it.item_code, it.item_name)
+        radar_max.append(converted_max if converted_max > 0 else (max_v if max_v > 0 else 100.0))
 
     if not standard_item_rows:
         # if no configured items, keep available item order
         for code in item_codes:
             radar_values.append(latest_item_point_map.get(code, 0.0))
-            radar_max.append(100.0)
+            converted_max = _fitness_item_max_point(code, item_name_map.get(code, code))
+            radar_max.append(converted_max if converted_max > 0 else 100.0)
 
     trend_codes = item_codes[:4]
     item_score_series = []
@@ -1095,7 +1181,7 @@ async def get_student_analysis(
                 'item_code': item['item_code'],
                 'item_name': item['item_name'],
                 'raw_score': format_score(to_float(row.raw_score) if row else None),
-                'score_value': round2(to_float(row.score_value)) if row else 0.0
+                'score_value': _fitness_item_converted_point(row) if row else 0.0
             })
         detail_row['items'] = detail_item_values
         detail_list.append(detail_row)
@@ -1282,8 +1368,7 @@ async def get_class_analysis(
     rank_data = []
     slots, _slot_names = _fitness_slots(current_rows)
     for student_no, s_rows in by_student.items():
-        item_map = {r.item_code: r for r in s_rows}
-        avg_score = avg([to_float(r.score_value) for r in s_rows])
+        total_score = _student_composite_score(s_rows)
         first = s_rows[0]
         comment = next((r.teacher_comment for r in s_rows if r.teacher_comment), '')
         rank_data.append({
@@ -1291,7 +1376,7 @@ async def get_class_analysis(
             'gender': first.gender,
             'student_no': student_no,
             'teacher_comment': comment,
-            'avg_score': avg_score,
+            'avg_score': total_score,
             'items': _item_detail_cells(s_rows, detail_columns, False)
         })
 

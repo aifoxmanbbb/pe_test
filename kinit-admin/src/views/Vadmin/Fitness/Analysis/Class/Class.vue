@@ -284,7 +284,7 @@ useHeaderTheme(() => stageType.value, headerThemeMap, 'primary')
           >
             <template #default="{ row }"><div>{{ row.items?.[idx]?.raw_score ?? '-' }}</div><div class="sub-cell">{{ row.items?.[idx]?.score_value ?? 0 }}分</div></template>
           </ElTableColumn>
-          <ElTableColumn prop="avg_score" label="单项均分" min-width="90" align="center" />
+          <ElTableColumn prop="avg_score" label="体测总分" min-width="90" align="center" />
           <ElTableColumn prop="teacher_comment" label="老师评语" min-width="220" show-overflow-tooltip />
         </ElTable>
         </template>
