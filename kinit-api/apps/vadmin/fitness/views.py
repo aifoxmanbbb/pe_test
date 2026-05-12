@@ -322,7 +322,7 @@ def _fitness_item_point_rule_key(row: VadminSportScore) -> str | None:
 
 def _fitness_item_max_point(item_code: str | None, item_name: str | None) -> float:
     rule_key = _fitness_item_point_rule_key_by_text(item_code, item_name)
-    if not rule_key:
+    if not rule_key or rule_key == 'record':
         return 0.0
     return to_float(FITNESS_ITEM_POINT_RULES[rule_key].get('max'))
 
