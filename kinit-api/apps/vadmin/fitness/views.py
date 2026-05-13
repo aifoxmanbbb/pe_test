@@ -2226,7 +2226,7 @@ async def export_report(
         return ErrorResponse('未找到导出数据')
     
     filename = f"成绩报告_{batch_id}.xlsx"
-    url = export_scores_to_excel(rows, filename)
+    url = export_scores_to_excel(rows, filename, score_value_getter=_fitness_item_converted_point)
     
     return SuccessResponse({'url': url})
 

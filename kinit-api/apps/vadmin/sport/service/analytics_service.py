@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from decimal import Decimal
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from sqlalchemy import false, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -397,7 +397,11 @@ def display_gender(value: str | int | None) -> str:
     return str(value or '')
 
 
-def export_scores_to_excel(rows: list[VadminSportScore], filename: str) -> str:
+def export_scores_to_excel(
+    rows: list[VadminSportScore],
+    filename: str,
+    score_value_getter: Callable[[VadminSportScore], float] | None = None
+) -> str:
     if not rows:
         return ""
 
@@ -435,9 +439,10 @@ def export_scores_to_excel(rows: list[VadminSportScore], filename: str) -> str:
         for code in item_codes:
             ir = s_item_map.get(code)
             if ir:
+                score_value = score_value_getter(ir) if score_value_getter else to_float(ir.score_value)
                 row_data.append(format_score(ir.raw_score))
-                row_data.append(to_float(ir.score_value))
-                total_score += to_float(ir.score_value)
+                row_data.append(score_value)
+                total_score += score_value
             else:
                 row_data.append("-")
                 row_data.append(0.0)
