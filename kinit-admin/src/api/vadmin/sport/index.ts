@@ -41,6 +41,14 @@ export const registerStudentApi = (data: any): Promise<IResponse<any>> => {
   return request.post({ url: '/vadmin/sport/student/register', data })
 }
 
+export const getStudentSelfProfileApi = (): Promise<IResponse<any>> => {
+  return request.get({ url: '/vadmin/sport/student/self/profile' })
+}
+
+export const updateStudentSelfPhoneApi = (data: { phone: string }): Promise<IResponse<any>> => {
+  return request.post({ url: '/vadmin/sport/student/self/phone', data })
+}
+
 export const getStudentSelfEntryOptionsApi = (): Promise<IResponse<any>> => {
   return request.get({ url: '/vadmin/sport/student/self-entry/options' })
 }

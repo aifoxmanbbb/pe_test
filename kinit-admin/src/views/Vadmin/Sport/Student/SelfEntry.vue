@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ContentWrap } from '@/components/ContentWrap'
 import {
   ElButton,
@@ -13,12 +14,13 @@ import {
   ElSelect,
   ElTag
 } from 'element-plus'
-import { QuestionFilled } from '@element-plus/icons-vue'
+import { ArrowRight, DataAnalysis, QuestionFilled } from '@element-plus/icons-vue'
 import {
   getStudentSelfEntryOptionsApi,
   submitStudentSelfEntryApi
 } from '@/api/vadmin/sport'
 import { getScoreInputPlaceholder } from '@/utils/scoreInputPlaceholder'
+import PhoneRequiredDialog from './components/PhoneRequiredDialog.vue'
 
 defineOptions({ name: 'StudentSelfEntry' })
 
@@ -39,6 +41,7 @@ type EntryBatch = {
   items: EntryItem[]
 }
 
+const router = useRouter()
 const loading = ref(false)
 const submitting = ref(false)
 const profile = ref<Record<string, any>>({})
@@ -48,12 +51,17 @@ const rawScores = ref<Record<string, string>>({})
 const ruleDialogVisible = ref(false)
 const ruleDialogTitle = ref('')
 const ruleDialogLines = ref<string[]>([])
+const phoneDialogVisible = ref(false)
+const pendingScoreNavigation = ref(false)
 
 const currentBatch = computed(() => {
   return batches.value.find((item) => item.value === selectedBatchId.value) || null
 })
 
 const batchItems = computed(() => currentBatch.value?.items || [])
+const isValidStudentPhone = (phone: unknown) =>
+  /^1(3\d|4[4-9]|5[0-35-9]|6[67]|7[013-8]|8[0-9]|9[0-9])\d{8}$/.test(String(phone || '').trim())
+const hasProfilePhone = computed(() => isValidStudentPhone(profile.value?.phone))
 
 const resetScoreInputs = () => {
   rawScores.value = {}
@@ -76,6 +84,9 @@ const loadData = async () => {
     batches.value = res.data.batches || []
     selectedBatchId.value = batches.value[0]?.value
     resetScoreInputs()
+    if (!hasProfilePhone.value) {
+      phoneDialogVisible.value = true
+    }
   }
   loading.value = false
 }
@@ -113,12 +124,40 @@ const submit = async () => {
   }
 }
 
+const openMyScores = () => {
+  pendingScoreNavigation.value = true
+  if (!hasProfilePhone.value) {
+    phoneDialogVisible.value = true
+    return
+  }
+  router.push('/sport/my-scores')
+}
+
+const handlePhoneSaved = (phone: string) => {
+  profile.value = { ...profile.value, phone }
+  if (pendingScoreNavigation.value) {
+    pendingScoreNavigation.value = false
+    router.push('/sport/my-scores')
+  }
+}
+
 onMounted(loadData)
 </script>
 
 <template>
   <ContentWrap>
     <div class="self-entry" v-loading="loading">
+      <button type="button" class="self-entry__score-link" @click="openMyScores">
+        <span class="self-entry__score-link-icon">
+          <ElIcon><DataAnalysis /></ElIcon>
+        </span>
+        <span class="self-entry__score-link-copy">
+          <strong>查看我的成绩</strong>
+          <em>体考体测成绩、项目分布和趋势分析</em>
+        </span>
+        <ElIcon class="self-entry__score-link-arrow"><ArrowRight /></ElIcon>
+      </button>
+
       <section class="self-entry__hero">
         <div>
           <ElTag effect="dark" class="self-entry__tag">学生自主录入</ElTag>
@@ -188,6 +227,12 @@ onMounted(loadData)
       </div>
       <ElEmpty v-else description="该项目暂无规则说明" />
     </ElDialog>
+
+    <PhoneRequiredDialog
+      v-model="phoneDialogVisible"
+      :initial-phone="profile.phone"
+      @saved="handlePhoneSaved"
+    />
   </ContentWrap>
 </template>
 
@@ -195,6 +240,65 @@ onMounted(loadData)
 .self-entry {
   min-height: 100%;
   padding: 2px;
+}
+
+.self-entry__score-link {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  width: 100%;
+  margin: 0 0 16px;
+  padding: 18px 22px;
+  border: 0;
+  border-radius: 18px;
+  color: #f8fafc;
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.96), rgba(37, 99, 235, 0.96)),
+    #0f766e;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.16);
+  cursor: pointer;
+  text-align: left;
+}
+
+.self-entry__score-link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 22px 42px rgba(15, 23, 42, 0.2);
+}
+
+.self-entry__score-link-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 22px;
+}
+
+.self-entry__score-link-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.self-entry__score-link-copy strong {
+  overflow-wrap: anywhere;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.self-entry__score-link-copy em {
+  overflow-wrap: anywhere;
+  color: rgba(226, 232, 240, 0.82);
+  font-size: 13px;
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.self-entry__score-link-arrow {
+  font-size: 22px;
 }
 
 .self-entry__hero {
@@ -357,6 +461,15 @@ onMounted(loadData)
 
   .self-entry__grid {
     grid-template-columns: 1fr;
+  }
+
+  .self-entry__score-link {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 16px;
+  }
+
+  .self-entry__score-link-arrow {
+    display: none;
   }
 }
 </style>

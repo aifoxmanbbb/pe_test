@@ -19,9 +19,16 @@ import {
 } from 'element-plus'
 import { getPeStudentAnalysisSelfApi } from '@/api/vadmin/pe'
 import { getFitnessStudentAnalysisSelfApi } from '@/api/vadmin/fitness'
-import { getSchoolOptionsApi, getGradeOptionsApi, getClassOptionsApi, getStudentListApi } from '@/api/vadmin/sport'
+import {
+  getSchoolOptionsApi,
+  getGradeOptionsApi,
+  getClassOptionsApi,
+  getStudentListApi,
+  getStudentSelfProfileApi
+} from '@/api/vadmin/sport'
 import { useHeaderTheme } from '@/hooks/web/useHeaderTheme'
 import { analysisHeroImages } from '@/constants/cockpit'
+import PhoneRequiredDialog from './components/PhoneRequiredDialog.vue'
 
 defineOptions({ name: 'MyScores' })
 
@@ -32,6 +39,8 @@ const peData = ref<any>(null)
 const fitnessData = ref<any>(null)
 const loading = ref(false)
 const descColumns = ref(3)
+const selfProfile = ref<any>(null)
+const phoneDialogVisible = ref(false)
 
 const schoolOptions = ref<any[]>([])
 const gradeOptions = ref<any[]>([])
@@ -122,6 +131,8 @@ const fitnessStateTrendOptions = reactive<any>({
 })
 
 const profile = computed(() => peData.value?.profile || fitnessData.value?.profile || null)
+const isValidStudentPhone = (phone: unknown) =>
+  /^1(3\d|4[4-9]|5[0-35-9]|6[67]|7[013-8]|8[0-9]|9[0-9])\d{8}$/.test(String(phone || '').trim())
 const displayGender = (value: unknown) => {
   const text = String(value ?? '').trim().toLowerCase()
   if (['male', 'm', '1', '\u7537'].includes(text)) return '\u7537'
@@ -254,6 +265,23 @@ const loadData = async (params?: Record<string, any>) => {
   loading.value = false
 }
 
+const ensureStudentPhone = async () => {
+  if (isStaff.value) return true
+  const res = await getStudentSelfProfileApi().catch(() => null)
+  if (!res?.data) return true
+  selfProfile.value = res.data
+  if (!isValidStudentPhone(res.data.phone)) {
+    phoneDialogVisible.value = true
+    return false
+  }
+  return true
+}
+
+const handlePhoneSaved = async (phone: string) => {
+  selfProfile.value = { ...(selfProfile.value || {}), phone }
+  await loadData()
+}
+
 const loadSchoolOptions = async () => {
   const res = await getSchoolOptionsApi().catch(() => null)
   schoolOptions.value = (res?.data || []).map((i: any) => ({
@@ -362,7 +390,8 @@ onMounted(async () => {
   if (isStaff.value) {
     await initStaffDefault()
   } else {
-    await loadData()
+    const ready = await ensureStudentPhone()
+    if (ready) await loadData()
   }
 })
 
@@ -525,6 +554,12 @@ useHeaderTheme(() => 'fitness', headerThemeMap, 'fitness')
         </ElRow>
       </div>
     </div>
+
+    <PhoneRequiredDialog
+      v-model="phoneDialogVisible"
+      :initial-phone="selfProfile?.phone"
+      @saved="handlePhoneSaved"
+    />
   </ContentWrap>
 </template>
 

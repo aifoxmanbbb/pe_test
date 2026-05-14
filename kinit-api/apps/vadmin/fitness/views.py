@@ -1224,8 +1224,6 @@ async def get_student_analysis_self(
         getattr(auth.user, 'id', None), getattr(auth.user, 'telephone', None),
         getattr(auth.user, 'is_staff', None), student_no
     )
-    if not getattr(auth.user, 'is_staff', False):
-        return ErrorResponse('请先绑定学生账号')
     if getattr(auth.user, 'is_staff', False):
         if not student_no:
             return SuccessResponse(_empty_student())
@@ -1249,6 +1247,8 @@ async def get_student_analysis_self(
         telephone,
         getattr(auth.user, 'id', None)
     )
+    if ctx and not str(ctx['student'].phone or '').strip():
+        return ErrorResponse('请先完善手机号后查看成绩')
     resp = None
     if ctx:
         logger.info(

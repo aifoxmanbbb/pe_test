@@ -138,6 +138,18 @@ class StudentRegisterIn(BaseModel):
         return normalize_optional_phone(value)
 
 
+class StudentSelfPhoneIn(BaseModel):
+    phone: str
+
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, value):
+        text = str(value or '').strip()
+        if not text:
+            raise ValueError('请输入手机号')
+        return vali_telephone(text)
+
+
 class SchoolBase(BaseModel):
     school_name: str
     school_code: Optional[str] = None

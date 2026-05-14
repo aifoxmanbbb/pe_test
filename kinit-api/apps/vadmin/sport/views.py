@@ -435,6 +435,50 @@ async def _ensure_student_menu_role(db):
     score_menu.canTo = False
     score_menu.alwaysShow = False
 
+    my_scores_menu = await db.scalar(select(VadminMenu).where(
+        VadminMenu.perms == STUDENT_SCORE_PERM,
+        VadminMenu.is_delete == false()
+    ))
+    if not my_scores_menu:
+        my_scores_menu = VadminMenu(
+            title='我的成绩',
+            icon=None,
+            redirect=None,
+            component='views/Vadmin/Sport/Student/MyScores',
+            path='my-scores',
+            disabled=False,
+            hidden=False,
+            order=2,
+            menu_type='1',
+            parent_id=root_menu.id,
+            perms=STUDENT_SCORE_PERM,
+            noCache=False,
+            breadcrumb=True,
+            affix=False,
+            noTagsView=False,
+            canTo=False,
+            alwaysShow=False
+        )
+        db.add(my_scores_menu)
+        await db.flush()
+    my_scores_menu.title = '我的成绩'
+    my_scores_menu.icon = None
+    my_scores_menu.redirect = None
+    my_scores_menu.component = 'views/Vadmin/Sport/Student/MyScores'
+    my_scores_menu.path = 'my-scores'
+    my_scores_menu.disabled = False
+    my_scores_menu.hidden = False
+    my_scores_menu.order = 2
+    my_scores_menu.menu_type = '1'
+    my_scores_menu.parent_id = root_menu.id
+    my_scores_menu.perms = STUDENT_SCORE_PERM
+    my_scores_menu.noCache = False
+    my_scores_menu.breadcrumb = True
+    my_scores_menu.affix = False
+    my_scores_menu.noTagsView = False
+    my_scores_menu.canTo = False
+    my_scores_menu.alwaysShow = False
+
     role = await db.scalar(select(VadminRole).where(
         VadminRole.role_key == STUDENT_ROLE_KEY,
         VadminRole.is_delete == false()
@@ -446,7 +490,7 @@ async def _ensure_student_menu_role(db):
             data_range=0,
             disabled=False,
             order=999,
-            desc='学生/家长自助账号，仅可录入本人体育成绩',
+            desc='学生/家长自助账号，可录入并查看本人体育成绩',
             is_admin=False
         )
         db.add(role)
@@ -454,9 +498,9 @@ async def _ensure_student_menu_role(db):
     else:
         role.disabled = False
     role.name = STUDENT_ROLE_NAME
-    role.desc = '学生/家长自助账号，仅可录入本人体育成绩'
+    role.desc = '学生/家长自助账号，可录入并查看本人体育成绩'
 
-    target_menu_ids = {root_menu.id, score_menu.id}
+    target_menu_ids = {root_menu.id, score_menu.id, my_scores_menu.id}
     current_menu_ids = set((await db.scalars(select(auth_models.vadmin_auth_role_menus.c.menu_id).where(
         auth_models.vadmin_auth_role_menus.c.role_id == role.id
     ))).all())
@@ -466,7 +510,8 @@ async def _ensure_student_menu_role(db):
         ))
         await db.execute(auth_models.vadmin_auth_role_menus.insert(), [
             {'role_id': role.id, 'menu_id': root_menu.id},
-            {'role_id': role.id, 'menu_id': score_menu.id}
+            {'role_id': role.id, 'menu_id': score_menu.id},
+            {'role_id': role.id, 'menu_id': my_scores_menu.id}
         ])
     return role
 
@@ -662,6 +707,72 @@ async def _get_self_student_context(db, user: VadminUser | None) -> dict | None:
         "grade_name": grade_name,
         "class_name": class_name
     }
+
+
+def _self_student_profile_payload(ctx: dict) -> dict:
+    student = ctx["student"]
+    return {
+        "student_no": student.student_no,
+        "student_name": student.name,
+        "gender": student.gender,
+        "phone": student.phone,
+        "school_name": ctx["school_name"],
+        "grade_name": ctx["grade_name"],
+        "class_name": ctx["class_name"]
+    }
+
+
+@app.get("/student/self/profile", summary="学生本人档案")
+async def get_student_self_profile(auth: Auth = Depends(AllUserAuth())):
+    if getattr(auth.user, 'is_staff', False):
+        return ErrorResponse("当前入口仅支持学生/家长账号使用")
+    ctx = await _get_self_student_context(auth.db, auth.user)
+    if not ctx:
+        return ErrorResponse("未找到学生档案，请先完成学生注册")
+    return SuccessResponse(_self_student_profile_payload(ctx))
+
+
+@app.post("/student/self/phone", summary="学生本人补录手机号")
+async def update_student_self_phone(data: schemas.StudentSelfPhoneIn, auth: Auth = Depends(AllUserAuth())):
+    if getattr(auth.user, 'is_staff', False):
+        return ErrorResponse("当前入口仅支持学生/家长账号使用")
+    ctx = await _get_self_student_context(auth.db, auth.user)
+    if not ctx:
+        return ErrorResponse("未找到学生档案，请先完成学生注册")
+
+    phone = data.phone
+    student = ctx["student"]
+
+    duplicate_student = await auth.db.scalar(select(VadminPefStudent).where(
+        VadminPefStudent.phone == phone,
+        VadminPefStudent.is_delete == false(),
+        VadminPefStudent.id != student.id
+    ))
+    if duplicate_student:
+        return ErrorResponse("该手机号已绑定其他学生")
+
+    duplicate_user = await auth.db.scalar(select(VadminUser).where(
+        VadminUser.telephone == phone,
+        VadminUser.is_delete == false(),
+        VadminUser.id != auth.user.id
+    ))
+    if duplicate_user:
+        return ErrorResponse("该手机号已被其他系统账号占用")
+
+    student.phone = phone
+    if not student.user_id:
+        student.user_id = auth.user.id
+    auth.user.telephone = phone
+
+    score_rows = (await auth.db.scalars(select(VadminSportScore).where(
+        VadminSportScore.student_no == student.student_no,
+        VadminSportScore.is_delete == false()
+    ))).all()
+    for row in score_rows:
+        row.mobile = phone
+
+    await auth.db.flush()
+    return SuccessResponse(_self_student_profile_payload(ctx), msg="手机号已保存")
 
 
 def _parse_entry_raw_score(raw, item_code: str | None = None) -> float | None:
@@ -1599,6 +1710,7 @@ async def get_student_self_entry_options(auth: Auth = Depends(AllUserAuth())):
             "student_no": student.student_no,
             "student_name": student.name,
             "gender": student.gender,
+            "phone": student.phone,
             "school_name": ctx["school_name"],
             "grade_name": ctx["grade_name"],
             "class_name": ctx["class_name"]
