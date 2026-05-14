@@ -13,8 +13,6 @@ import {
   ElOption,
   ElRow,
   ElSelect,
-  ElTable,
-  ElTableColumn,
   ElTag
 } from 'element-plus'
 import { getPeStudentAnalysisSelfApi } from '@/api/vadmin/pe'
@@ -67,9 +65,27 @@ const peTotalTrendOptions = reactive<any>({
   yAxis: { type: 'value', name: '总分' },
   series: [
     { name: '总分', type: 'line', smooth: true, data: [], itemStyle: { color: '#409EFF' } },
-    { name: '及格线', type: 'line', smooth: true, data: [], lineStyle: { color: '#E6A23C', type: 'dashed' } },
-    { name: '优秀线', type: 'line', smooth: true, data: [], lineStyle: { color: '#67C23A', type: 'dashed' } },
-    { name: '满分线', type: 'line', smooth: true, data: [], lineStyle: { color: '#303133', type: 'dashed' } }
+    {
+      name: '及格线',
+      type: 'line',
+      smooth: true,
+      data: [],
+      lineStyle: { color: '#E6A23C', type: 'dashed' }
+    },
+    {
+      name: '优秀线',
+      type: 'line',
+      smooth: true,
+      data: [],
+      lineStyle: { color: '#67C23A', type: 'dashed' }
+    },
+    {
+      name: '满分线',
+      type: 'line',
+      smooth: true,
+      data: [],
+      lineStyle: { color: '#303133', type: 'dashed' }
+    }
   ]
 })
 
@@ -130,16 +146,50 @@ const fitnessStateTrendOptions = reactive<any>({
   ]
 })
 
-const profile = computed(() => peData.value?.profile || fitnessData.value?.profile || null)
+const hasProfileContent = (value: any) =>
+  Boolean(
+    value &&
+      typeof value === 'object' &&
+      Object.values(value).some((item) => String(item ?? '').trim() !== '')
+  )
+
+const normalizeProfile = (value: any) => {
+  if (!hasProfileContent(value)) return null
+  return {
+    ...value,
+    school: value.school ?? value.school_name,
+    grade: value.grade ?? value.grade_name,
+    class_name: value.class_name,
+    student_name: value.student_name ?? value.name,
+    student_no: value.student_no
+  }
+}
+
+const profile = computed(
+  () =>
+    normalizeProfile(peData.value?.profile) ||
+    normalizeProfile(fitnessData.value?.profile) ||
+    normalizeProfile(selfProfile.value)
+)
 const isValidStudentPhone = (phone: unknown) =>
   /^1(3\d|4[4-9]|5[0-35-9]|6[67]|7[013-8]|8[0-9]|9[0-9])\d{8}$/.test(String(phone || '').trim())
 const displayGender = (value: unknown) => {
-  const text = String(value ?? '').trim().toLowerCase()
+  const text = String(value ?? '')
+    .trim()
+    .toLowerCase()
   if (['male', 'm', '1', '\u7537'].includes(text)) return '\u7537'
   if (['female', 'f', '0', '2', '\u5973'].includes(text)) return '\u5973'
   return '-'
 }
 const fitnessDetailColumns = computed(() => fitnessData.value?.detail_columns || [])
+const displayValue = (value: unknown) => {
+  if (value === undefined || value === null || value === '') return '-'
+  return String(value)
+}
+const scoreValue = (value: unknown, unit = '') => {
+  if (value === undefined || value === null || value === '') return '-'
+  return `${value}${unit}`
+}
 const peLatestScore = computed(() => Number(peData.value?.stats?.latest_total || 0))
 const fitnessLatestScore = computed(() => {
   const score = fitnessData.value?.stats?.latest_composite_score
@@ -185,6 +235,60 @@ const hasFitnessItemTrend = computed(() => (fitnessItemTrendOptions.series || []
 const hasFitnessRadar = computed(() => (fitnessRadarOptions.radar?.indicator || []).length > 0)
 const hasFitnessStateTrend = computed(() => (fitnessStateTrendOptions.xAxis.data || []).length > 0)
 
+const peDetailCards = computed(() =>
+  (peData.value?.detail_list || []).map((row: any) => ({
+    ...row,
+    fields: [
+      { label: '测试批次', value: displayValue(row.batch_name), wide: true },
+      { label: '总分', value: scoreValue(row.total_score, '分') },
+      {
+        label: '状态',
+        value: row.pass_state ? '及格' : '不及格',
+        tagType: row.pass_state ? 'success' : 'danger'
+      },
+      { label: '教师评语', value: displayValue(row.teacher_comment), wide: true }
+    ],
+    items: [
+      {
+        label: '门槛项',
+        raw: displayValue(row.gate_score),
+        point: scoreValue(row.gate_point, '分')
+      },
+      { label: '跳绳', raw: displayValue(row.rope_score), point: scoreValue(row.rope_point, '分') },
+      { label: '跳远', raw: displayValue(row.jump_score), point: scoreValue(row.jump_point, '分') },
+      {
+        label: '实心球',
+        raw: displayValue(row.ball_score),
+        point: scoreValue(row.ball_point, '分')
+      }
+    ]
+  }))
+)
+
+const fitnessDetailCards = computed(() =>
+  (fitnessData.value?.detail_list || []).map((row: any) => {
+    const sourceItems = fitnessDetailColumns.value.length
+      ? fitnessDetailColumns.value.map((col: any, idx: number) => ({
+          ...col,
+          ...(row.items?.[idx] || {})
+        }))
+      : row.items || []
+    return {
+      ...row,
+      fields: [
+        { label: '测试批次', value: displayValue(row.batch_name), wide: true },
+        { label: '综合评分', value: scoreValue(row.composite_score, '分') },
+        { label: '教师评语', value: displayValue(row.teacher_comment), wide: true }
+      ],
+      items: sourceItems.map((item: any) => ({
+        label: item.item_name || item.item_code || '项目',
+        raw: displayValue(item.raw_score),
+        point: scoreValue(item.score_value, '分')
+      }))
+    }
+  })
+)
+
 const chartColors = ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399']
 
 const applyPeCharts = () => {
@@ -211,14 +315,18 @@ const applyPeCharts = () => {
   const excellentLine = total.excellent_line || []
   const fullLine = total.full_line || []
   peStateTrendOptions.xAxis.data = batches
-  peStateTrendOptions.series[0].data = totals.map((v: any, i: number) => (Number(v) < Number(passLine[i] || 0) ? 1 : 0))
+  peStateTrendOptions.series[0].data = totals.map((v: any, i: number) =>
+    Number(v) < Number(passLine[i] || 0) ? 1 : 0
+  )
   peStateTrendOptions.series[1].data = totals.map((v: any, i: number) =>
     Number(v) >= Number(passLine[i] || 0) && Number(v) < Number(excellentLine[i] || 0) ? 1 : 0
   )
   peStateTrendOptions.series[2].data = totals.map((v: any, i: number) =>
     Number(v) >= Number(excellentLine[i] || 0) && Number(v) < Number(fullLine[i] || 0) ? 1 : 0
   )
-  peStateTrendOptions.series[3].data = totals.map((v: any, i: number) => (Number(v) >= Number(fullLine[i] || 0) ? 1 : 0))
+  peStateTrendOptions.series[3].data = totals.map((v: any, i: number) =>
+    Number(v) >= Number(fullLine[i] || 0) ? 1 : 0
+  )
 }
 
 const applyFitnessCharts = () => {
@@ -407,29 +515,71 @@ useHeaderTheme(() => 'fitness', headerThemeMap, 'fitness')
     <div class="analysis-stage analysis-stage--fitness my-scores-cockpit">
       <div v-if="isStaff" class="analysis-search-shell mb-12px">
         <div class="filter-row">
-          <ElSelect v-model="filters.school_name" placeholder="学校" clearable @change="loadGradeOptions" class="w-220px">
+          <ElSelect
+            v-model="filters.school_name"
+            placeholder="学校"
+            clearable
+            @change="loadGradeOptions"
+            class="w-220px"
+          >
             <ElOption v-for="o in schoolOptions" :key="o.value" :label="o.label" :value="o.value" />
           </ElSelect>
-          <ElSelect v-model="filters.grade_name" placeholder="年级" clearable @change="loadClassOptions" class="w-180px">
+          <ElSelect
+            v-model="filters.grade_name"
+            placeholder="年级"
+            clearable
+            @change="loadClassOptions"
+            class="w-180px"
+          >
             <ElOption v-for="o in gradeOptions" :key="o.value" :label="o.label" :value="o.value" />
           </ElSelect>
-          <ElSelect v-model="filters.class_name" placeholder="班级" clearable @change="loadStudentOptions" class="w-180px">
+          <ElSelect
+            v-model="filters.class_name"
+            placeholder="班级"
+            clearable
+            @change="loadStudentOptions"
+            class="w-180px"
+          >
             <ElOption v-for="o in classOptions" :key="o.value" :label="o.label" :value="o.value" />
           </ElSelect>
-          <ElSelect v-model="filters.student_no" placeholder="学生" clearable filterable class="w-240px">
-            <ElOption v-for="o in studentOptions" :key="o.value" :label="o.label" :value="o.value" />
+          <ElSelect
+            v-model="filters.student_no"
+            placeholder="学生"
+            clearable
+            filterable
+            class="w-240px"
+          >
+            <ElOption
+              v-for="o in studentOptions"
+              :key="o.value"
+              :label="o.label"
+              :value="o.value"
+            />
           </ElSelect>
           <ElButton type="primary" @click="queryByFilter">查询</ElButton>
         </div>
       </div>
 
-      <section class="analysis-hero mb-16px" :style="{ '--analysis-hero-image': `url(${analysisHeroImages.myScores}) center/cover no-repeat` }">
+      <section
+        class="analysis-hero mb-16px"
+        :style="{
+          '--analysis-hero-image': `url(${analysisHeroImages.myScores}) center/cover no-repeat`
+        }"
+      >
         <div class="analysis-hero__copy">
           <div class="analysis-hero__eyebrow">MY SPORTS SCOREBOARD</div>
           <h1 class="analysis-hero__title">我的 <span>成绩</span></h1>
-          <p class="analysis-hero__desc">把体考与体测的最近表现、批次轨迹和项目分布放到同一张成绩驾驶舱里，查看个人阶段性变化。</p>
+          <p class="analysis-hero__desc"
+            >把体考与体测的最近表现、批次轨迹和项目分布放到同一张成绩驾驶舱里，查看个人阶段性变化。</p
+          >
           <div class="analysis-hero__meta">
-            <div class="analysis-hero__pill">{{ profile ? `${profile.school || '-'}-${profile.student_name || '-'}-${profile.student_no || '-'}` : (isStaff ? '请选择学生查看' : '我的成绩驾驶舱') }}</div>
+            <div class="analysis-hero__pill">{{
+              profile
+                ? `${profile.school || '-'}-${profile.student_name || '-'}-${profile.student_no || '-'}`
+                : isStaff
+                  ? '请选择学生查看'
+                  : '我的成绩驾驶舱'
+            }}</div>
             <div class="analysis-hero__sub">{{ isStaff ? '管理员筛选视角' : '学生个人视角' }}</div>
           </div>
         </div>
@@ -446,21 +596,29 @@ useHeaderTheme(() => 'fitness', headerThemeMap, 'fitness')
           <div class="analysis-hero__stats">
             <div v-for="item in heroStats" :key="item.label" class="analysis-hero__stat">
               <div class="analysis-hero__stat-label">{{ item.label }}</div>
-              <div class="analysis-hero__stat-value">{{ item.value }}<span>{{ item.suffix }}</span></div>
+              <div class="analysis-hero__stat-value"
+                >{{ item.value }}<span>{{ item.suffix }}</span></div
+              >
             </div>
           </div>
         </div>
       </section>
 
-      <div v-if="loading" class="analysis-card text-center py-32px text-gray-400">正在加载成绩数据...</div>
+      <div v-if="loading" class="analysis-card text-center py-32px text-gray-400"
+        >正在加载成绩数据...</div
+      >
       <div v-else-if="!profile" class="analysis-card">
-        <ElEmpty :description="isStaff ? '请选择学生后查看成绩' : '暂无成绩信息，请联系老师或管理员'" />
+        <ElEmpty
+          :description="isStaff ? '请选择学生后查看成绩' : '暂无成绩信息，请联系老师或管理员'"
+        />
       </div>
       <div v-else class="my-scores-page">
         <ElCard shadow="never" class="analysis-card mb-12px" header="个人档案">
           <ElDescriptions :column="descColumns" border>
             <ElDescriptionsItem label="姓名">{{ profile.student_name || '-' }}</ElDescriptionsItem>
-            <ElDescriptionsItem label="性别">{{ displayGender(profile.gender) }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="性别">{{
+              displayGender(profile.gender)
+            }}</ElDescriptionsItem>
             <ElDescriptionsItem label="身份证">{{ profile.student_no || '-' }}</ElDescriptionsItem>
             <ElDescriptionsItem label="学校">{{ profile.school || '-' }}</ElDescriptionsItem>
             <ElDescriptionsItem label="年级">{{ profile.grade || '-' }}</ElDescriptionsItem>
@@ -470,7 +628,11 @@ useHeaderTheme(() => 'fitness', headerThemeMap, 'fitness')
 
         <ElRow :gutter="12" class="mb-12px">
           <ElCol v-for="card in summaryCards" :key="card.key" :xs="24" :sm="12">
-            <ElCard shadow="never" class="score-highlight-card" :class="`score-highlight-card--${card.tone}`">
+            <ElCard
+              shadow="never"
+              class="score-highlight-card"
+              :class="`score-highlight-card--${card.tone}`"
+            >
               <div class="score-highlight-card__eyebrow">{{ card.eyebrow }}</div>
               <div class="score-highlight-card__title">{{ card.title }}</div>
               <div class="score-highlight-card__value">
@@ -511,7 +673,11 @@ useHeaderTheme(() => 'fitness', headerThemeMap, 'fitness')
               <ElEmpty v-else description="暂无体测雷达图" />
             </ElCol>
             <ElCol :xs="24" :md="8" class="mb-12px">
-              <Echart v-if="hasFitnessStateTrend" :options="fitnessStateTrendOptions" :height="300" />
+              <Echart
+                v-if="hasFitnessStateTrend"
+                :options="fitnessStateTrendOptions"
+                :height="300"
+              />
               <ElEmpty v-else description="暂无体测状态趋势" />
             </ElCol>
           </ElRow>
@@ -520,34 +686,64 @@ useHeaderTheme(() => 'fitness', headerThemeMap, 'fitness')
         <ElRow :gutter="12">
           <ElCol :xs="24" :lg="12" class="mb-12px">
             <ElCard shadow="never" class="analysis-card" header="体考成绩明细">
-              <ElTable v-if="peData?.detail_list?.length" :data="peData.detail_list" border stripe>
-                <ElTableColumn prop="batch_name" label="测试批次" min-width="140" />
-                <ElTableColumn prop="total_score" label="总分" width="90" align="center" />
-                <ElTableColumn label="状态" width="100" align="center">
-                  <template #default="{ row }">
-                    <ElTag :type="row.pass_state ? 'success' : 'danger'">{{ row.pass_state ? '及格' : '不及格' }}</ElTag>
-                  </template>
-                </ElTableColumn>
-              </ElTable>
+              <div v-if="peDetailCards.length" class="score-detail-list">
+                <section
+                  v-for="row in peDetailCards"
+                  :key="row.batch_id || row.batch_name"
+                  class="score-detail-record"
+                >
+                  <div class="score-detail-form">
+                    <div
+                      v-for="field in row.fields"
+                      :key="field.label"
+                      class="score-detail-field"
+                      :class="{ 'score-detail-field--wide': field.wide }"
+                    >
+                      <span>{{ field.label }}</span>
+                      <strong v-if="!field.tagType">{{ field.value }}</strong>
+                      <ElTag v-else :type="field.tagType">{{ field.value }}</ElTag>
+                    </div>
+                  </div>
+                  <div class="score-detail-items">
+                    <div v-for="item in row.items" :key="item.label" class="score-detail-item">
+                      <span>{{ item.label }}</span>
+                      <strong>{{ item.raw }}</strong>
+                      <em>{{ item.point }}</em>
+                    </div>
+                  </div>
+                </section>
+              </div>
               <ElEmpty v-else description="暂无体考明细" />
             </ElCard>
           </ElCol>
           <ElCol :xs="24" :lg="12" class="mb-12px">
             <ElCard shadow="never" class="analysis-card" header="体测成绩明细">
-              <ElTable v-if="fitnessData?.detail_list?.length" :data="fitnessData.detail_list" border stripe>
-                <ElTableColumn prop="batch_name" label="测试批次" min-width="140" />
-                <ElTableColumn
-                  v-for="(col, idx) in fitnessDetailColumns"
-                  :key="`${col.item_code}-${idx}`"
-                  :label="col.item_name"
-                  min-width="110"
-                  align="center"
+              <div v-if="fitnessDetailCards.length" class="score-detail-list">
+                <section
+                  v-for="row in fitnessDetailCards"
+                  :key="row.batch_id || row.batch_name"
+                  class="score-detail-record"
                 >
-                  <template #default="{ row }">
-                    {{ row.items?.[idx]?.score_value ?? 0 }}
-                  </template>
-                </ElTableColumn>
-              </ElTable>
+                  <div class="score-detail-form">
+                    <div
+                      v-for="field in row.fields"
+                      :key="field.label"
+                      class="score-detail-field"
+                      :class="{ 'score-detail-field--wide': field.wide }"
+                    >
+                      <span>{{ field.label }}</span>
+                      <strong>{{ field.value }}</strong>
+                    </div>
+                  </div>
+                  <div class="score-detail-items score-detail-items--fitness">
+                    <div v-for="item in row.items" :key="item.label" class="score-detail-item">
+                      <span>{{ item.label }}</span>
+                      <strong>{{ item.raw }}</strong>
+                      <em>{{ item.point }}</em>
+                    </div>
+                  </div>
+                </section>
+              </div>
               <ElEmpty v-else description="暂无体测明细" />
             </ElCard>
           </ElCol>
@@ -587,6 +783,82 @@ useHeaderTheme(() => 'fitness', headerThemeMap, 'fitness')
   width: 72px;
 }
 
+.score-detail-list {
+  display: grid;
+  gap: 12px;
+}
+
+.score-detail-record {
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.98));
+}
+
+.score-detail-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.score-detail-field {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.score-detail-field--wide {
+  grid-column: 1 / -1;
+}
+
+.score-detail-field span,
+.score-detail-item span {
+  display: block;
+  margin-bottom: 6px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.score-detail-field strong,
+.score-detail-item strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #0f172a;
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.score-detail-items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.score-detail-items--fitness {
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+
+.score-detail-item {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: rgba(241, 245, 249, 0.74);
+}
+
+.score-detail-item em {
+  display: block;
+  margin-top: 4px;
+  color: #0f766e;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
 .score-highlight-card {
   position: relative;
   overflow: hidden;
@@ -600,8 +872,7 @@ useHeaderTheme(() => 'fitness', headerThemeMap, 'fitness')
   content: '';
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.72), transparent 30%),
+  background: radial-gradient(circle at top right, rgba(255, 255, 255, 0.72), transparent 30%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04));
   pointer-events: none;
 }
@@ -616,15 +887,13 @@ useHeaderTheme(() => 'fitness', headerThemeMap, 'fitness')
 }
 
 .score-highlight-card--pe {
-  background:
-    radial-gradient(circle at 85% 18%, rgba(251, 191, 36, 0.22), transparent 24%),
+  background: radial-gradient(circle at 85% 18%, rgba(251, 191, 36, 0.22), transparent 24%),
     linear-gradient(180deg, rgba(255, 250, 235, 0.92), rgba(255, 245, 225, 0.88));
   box-shadow: 0 14px 28px rgba(180, 83, 9, 0.08);
 }
 
 .score-highlight-card--fitness {
-  background:
-    radial-gradient(circle at 85% 18%, rgba(125, 211, 252, 0.22), transparent 24%),
+  background: radial-gradient(circle at 85% 18%, rgba(125, 211, 252, 0.22), transparent 24%),
     linear-gradient(180deg, rgba(239, 246, 255, 0.94), rgba(236, 253, 250, 0.88));
   box-shadow: 0 14px 28px rgba(14, 116, 144, 0.08);
 }
@@ -704,6 +973,16 @@ useHeaderTheme(() => 'fitness', headerThemeMap, 'fitness')
 
   .my-scores-page :deep(.el-card__body) {
     padding: 12px;
+  }
+
+  .score-detail-record {
+    padding: 12px;
+  }
+
+  .score-detail-form,
+  .score-detail-items,
+  .score-detail-items--fitness {
+    grid-template-columns: 1fr;
   }
 
   .score-highlight-card {
