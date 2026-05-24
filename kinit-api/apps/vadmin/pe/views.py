@@ -1937,7 +1937,14 @@ async def export_report(
         return ErrorResponse('暂无数据可导出')
     
     filename = f"体考成绩报表_{batch_id}.xlsx"
-    url = export_scores_to_excel(rows, filename)
+    student_nos = sorted({r.student_no for r in rows if r.student_no})
+    students = (await auth.db.scalars(select(VadminPefStudent).where(
+        VadminPefStudent.is_delete == false(),
+        VadminPefStudent.student_no.in_(student_nos)
+    ))).all() if student_nos else []
+    student_phone_map = {s.student_no: (s.phone or '') for s in students}
+
+    url = export_scores_to_excel(rows, filename, student_phone_map=student_phone_map)
     
     return SuccessResponse({'url': url})
 

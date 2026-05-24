@@ -400,7 +400,8 @@ def display_gender(value: str | int | None) -> str:
 def export_scores_to_excel(
     rows: list[VadminSportScore],
     filename: str,
-    score_value_getter: Callable[[VadminSportScore], float] | None = None
+    score_value_getter: Callable[[VadminSportScore], float] | None = None,
+    student_phone_map: dict[str, str] | None = None
 ) -> str:
     if not rows:
         return ""
@@ -412,7 +413,7 @@ def export_scores_to_excel(
     
     item_codes = sorted(item_map.keys())
     
-    headers = ["学生姓名", "学号", "性别", "学校", "年级", "班级"]
+    headers = ["学生姓名", "学号", "学生手机号码", "性别", "学校", "年级", "班级"]
     for code in item_codes:
         name = item_map[code]
         headers.append(f"{name}(成绩)")
@@ -425,9 +426,11 @@ def export_scores_to_excel(
     excel_rows = []
     for student_no, s_rows in student_groups.items():
         first = s_rows[0]
+        mobile = (student_phone_map or {}).get(student_no, "")
         row_data = [
             first.student_name,
             first.student_no,
+            mobile,
             display_gender(first.gender),
             first.school_name,
             first.grade_name,

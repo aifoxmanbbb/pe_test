@@ -2225,8 +2225,20 @@ async def export_report(
     if not rows:
         return ErrorResponse('未找到导出数据')
     
+    student_nos = sorted({r.student_no for r in rows if r.student_no})
+    students = (await auth.db.scalars(select(VadminPefStudent).where(
+        VadminPefStudent.is_delete == false(),
+        VadminPefStudent.student_no.in_(student_nos)
+    ))).all() if student_nos else []
+    student_phone_map = {s.student_no: (s.phone or '') for s in students}
+
     filename = f"成绩报告_{batch_id}.xlsx"
-    url = export_scores_to_excel(rows, filename, score_value_getter=_fitness_item_converted_point)
+    url = export_scores_to_excel(
+        rows,
+        filename,
+        score_value_getter=_fitness_item_converted_point,
+        student_phone_map=student_phone_map
+    )
     
     return SuccessResponse({'url': url})
 

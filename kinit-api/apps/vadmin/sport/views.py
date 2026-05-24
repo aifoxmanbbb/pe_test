@@ -1780,7 +1780,8 @@ async def submit_student_self_entry(payload: dict = Body(...), auth: Auth = Depe
         item_code = _normalize_entry_item_code(item.get("item_code"))
         if not item_code or item_code not in item_rule_map:
             return ErrorResponse("存在不适用于当前学生的项目")
-        raw_text = str(item.get("raw_score") or "").strip()
+        raw_score_input = item.get("raw_score")
+        raw_text = "" if raw_score_input is None else str(raw_score_input).strip()
         raw_score = None
         if raw_text:
             raw_score = _parse_entry_raw_score(raw_text, item_code)

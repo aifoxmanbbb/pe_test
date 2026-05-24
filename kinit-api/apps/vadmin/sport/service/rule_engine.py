@@ -73,6 +73,16 @@ class RuleEngine:
         return {}
 
     @staticmethod
+    def _range_explicitly_allows_zero(range_info: dict[str, float]) -> bool:
+        if 'min' in range_info:
+            return range_info.get('min', 0) <= 0 <= range_info.get('max', float('inf'))
+        if 'exact' in range_info:
+            return range_info['exact'] == 0
+        if 'max' in range_info:
+            return range_info['max'] <= 0
+        return False
+
+    @staticmethod
     def eval_by_threshold(raw_value: float, threshold: dict[str, Any]) -> dict[str, Any]:
         pass_v = float(threshold.get('pass', 0))
         excellent_v = float(threshold.get('excellent', 0))
@@ -81,7 +91,11 @@ class RuleEngine:
         # 简单的逻辑：默认分值越大越好，除非 full < pass
         is_lower_better = full_v > 0 and full_v < pass_v
         
-        if is_lower_better:
+        if raw_value == 0 and is_lower_better and full_v > 0:
+            is_pass = False
+            is_excellent = False
+            is_full = False
+        elif is_lower_better:
             is_pass = raw_value <= pass_v
             is_excellent = raw_value <= excellent_v
             is_full = raw_value <= full_v
@@ -137,6 +151,8 @@ class RuleEngine:
         for rule in target_rules:
             range_info = RuleEngine._parse_range(rule.get('range', ''))
             if not range_info: continue
+            if raw_value == 0 and not RuleEngine._range_explicitly_allows_zero(range_info):
+                continue
             
             match = False
             if 'exact' in range_info:
